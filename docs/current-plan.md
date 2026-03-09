@@ -10,6 +10,7 @@ Last updated: 2026-03-09
 | Collaboration doc baseline migration | Completed (verified) | `docs/current-plans/context-doc-bootstrap.md` |
 | Refactor Analyze TUI                 | Completed (verified) | `docs/current-plans/refactor-analyze-tui.md`  |
 | Refresh release and Homebrew tap     | Completed (verified) | `docs/current-plans/release-brew-refresh.md`  |
+| Split human and agent CLI docs       | Completed (verified) | `docs/current-plans/readme-human-agent.md`    |
 
 ## Notes
 

@@ -39,7 +39,15 @@ Open the guided home screen:
 oac
 ```
 
-Scan without deleting anything:
+## For Humans
+
+OpenAgentCleaner is safe to approach in this order:
+
+1. Scan first.
+2. Review what was found.
+3. Delete only what you understand.
+
+Start with a read-only scan:
 
 ```bash
 oac scan
@@ -60,12 +68,16 @@ oac clean
 oac clean --dry-run
 ```
 
-Run in agent mode:
+If you want to remove items that may contain saved sessions, settings, or models:
 
 ```bash
-oac scan --mode agent --json
-oac clean --mode agent --yes --json
+oac clean --include-confirm
+oac clean --include-confirm --dry-run
 ```
+
+Human-friendly commands stay in this README. If you want machine-readable output, CI usage, or scripted cleanup, use the agent guide:
+
+- [docs/AGENT_CLI.md](docs/AGENT_CLI.md)
 
 ## Supported Today
 
@@ -161,16 +173,10 @@ Preview a larger cleanup:
 oac clean --include-confirm --dry-run
 ```
 
-Remove `confirm` items too:
-
-```bash
-oac clean --include-confirm
-oac clean --include-confirm --mode agent --yes --json
-```
-
 Full discovery rules:
 
 - [docs/DISCOVERY_RULES.md](docs/DISCOVERY_RULES.md)
+- [docs/AGENT_CLI.md](docs/AGENT_CLI.md)
 
 ## Scope
 
