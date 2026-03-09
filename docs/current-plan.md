@@ -4,10 +4,11 @@ Last updated: 2026-03-09
 
 ## Active Tasks
 
-| Topic | Status | Plan File |
-| --- | --- | --- |
-| Add `GEMINI.md` symlink | Completed (verified) | `docs/current-plans/gemini-md-symlink.md` |
+| Topic                                | Status               | Plan File                                     |
+| ------------------------------------ | -------------------- | --------------------------------------------- |
+| Add `GEMINI.md` symlink              | Completed (verified) | `docs/current-plans/gemini-md-symlink.md`     |
 | Collaboration doc baseline migration | Completed (verified) | `docs/current-plans/context-doc-bootstrap.md` |
+| Refactor Analyze TUI                 | Completed (verified) | `docs/current-plans/refactor-analyze-tui.md`  |
 
 ## Notes
 

@@ -5,7 +5,7 @@ BUILDDIR ?= $(CURDIR)/bin
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || printf 'dev')
 LDFLAGS ?= -s -w -X github.com/carlisle0615/OpenAgentCleaner/internal/cleaner.Version=$(VERSION)
 
-.PHONY: build fmt install install-release test uninstall
+.PHONY: build fmt install install-release test uninstall verify-fast verify-all hooks protect-main
 
 fmt:
 	gofmt -w main.go internal/cleaner/*.go
@@ -16,6 +16,18 @@ build:
 
 test:
 	go test ./...
+
+verify-fast:
+	./scripts/verify-fast.sh
+
+verify-all:
+	./scripts/verify-all.sh
+
+hooks:
+	./scripts/install-git-hooks.sh
+
+protect-main:
+	./scripts/protect-main.sh
 
 install:
 	PREFIX="$(PREFIX)" BINDIR="$(BINDIR)" BINARY="$(BINARY)" VERSION="$(VERSION)" LDFLAGS="$(LDFLAGS)" ./scripts/install-local.sh

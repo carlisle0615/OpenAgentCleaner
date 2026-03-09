@@ -1,32 +1,31 @@
-# OpenAgentCleaner
+<p align="center">
+  <img src="docs/icon.png" width="120" height="120" alt="OpenAgentCleaner Icon">
+</p>
 
-`OpenAgentCleaner` is a macOS-first CLI for cleaning leftover files from local AI assistants. It follows a `scan -> classify -> confirm -> delete` workflow inspired by tools like `Mole`, but focuses on assistant-specific state instead of generic developer artifacts.
+<h1 align="center">OpenAgentCleaner</h1>
 
-The default command name is `oac`.
+<p align="center">
+  Clean leftover AI assistant files on your Mac, with a guided CLI for humans and a structured mode for agents.
+</p>
 
-## Status
+<p align="center">
+  <a href="https://github.com/carlisle0615/OpenAgentCleaner/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/carlisle0615/OpenAgentCleaner/ci.yml?branch=main&label=ci"></a>
+  <a href="https://github.com/carlisle0615/OpenAgentCleaner/releases"><img alt="Release" src="https://img.shields.io/github/v/release/carlisle0615/OpenAgentCleaner"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/carlisle0615/OpenAgentCleaner"></a>
+</p>
 
-Current assistant support:
+OpenAgentCleaner is a macOS-first cleanup tool for local AI assistants. It focuses on assistant-specific leftovers such as logs, caches, models, session stores, launch agents, and local state. The workflow stays conservative: scan first, classify clearly, confirm explicitly, then delete.
 
-- `openclaw`
-- `ironclaw`
-- `ollama`
+The default command is `oac`.
 
-Current platform support:
+## Why OpenAgentCleaner
 
-- `macOS`
+- Built for normal users: start from `oac`, scan first, and delete with clear confirmation.
+- Built for power users: JSON output, non-interactive mode, and script-friendly guardrails.
+- Built for assistant-specific cleanup: not just caches, but sessions, launch agents, models, and state.
+- Built to be conservative: `manual` paths stay review-only.
 
-## Principles
-
-- Human-friendly mode: interactive selection and confirmation before deletion.
-- Agent-friendly mode: structured JSON output and non-interactive execution with `--yes`.
-- Guided UX: a home screen, cleanup previews, and plain-language safety cues for non-technical users.
-- Explicit safety classes:
-  - `safe`: logs, caches, and disposable runtime leftovers.
-  - `confirm`: persistent state that should only be removed intentionally.
-  - `manual`: paths that are listed for review but never deleted automatically.
-
-## Installation
+## Quick Start
 
 Install the latest release:
 
@@ -34,7 +33,84 @@ Install the latest release:
 curl -fsSL https://raw.githubusercontent.com/carlisle0615/OpenAgentCleaner/main/install.sh | bash
 ```
 
-Install to `~/.local/bin/oac` from the local source tree:
+Open the guided home screen:
+
+```bash
+oac
+```
+
+Scan without deleting anything:
+
+```bash
+oac scan
+```
+
+Browse leftovers and OpenClaw conversations in the TUI:
+
+```bash
+oac analyze
+oac analyze --assistant openclaw
+oac analyze --assistant openclaw --before 2026-03-01
+```
+
+Clean only recommended leftovers:
+
+```bash
+oac clean
+oac clean --dry-run
+```
+
+Run in agent mode:
+
+```bash
+oac scan --mode agent --json
+oac clean --mode agent --yes --json
+```
+
+## Supported Today
+
+- `macOS`
+- `openclaw`
+- `ironclaw`
+- `ollama`
+
+## Safety
+
+OpenAgentCleaner classifies discovered paths into three buckets:
+
+- `safe`: disposable logs, caches, and runtime leftovers.
+- `confirm`: persistent state that should only be removed intentionally.
+- `manual`: review-only paths that are never auto-deleted.
+
+This is intentionally conservative. For example:
+
+- OpenClaw workspaces are not auto-deleted.
+- Ollama SSH keys are not auto-deleted.
+- Agent mode refuses real deletion unless `--yes` is present.
+
+## Analyze Mode
+
+`oac analyze` is the product-style workflow for humans.
+
+- Browse assistants from one screen.
+- Inspect leftovers in a two-pane TUI.
+- Review OpenClaw conversations separately from other files.
+- Filter OpenClaw conversations by date.
+- Delete one conversation, one leftover item, or all conversations before a cutoff date.
+
+TUI controls:
+
+- `Up` / `Down` or `j` / `k`: move
+- `Enter`: open
+- `q` / `Esc`: back or quit
+- `d`: delete selected item
+- `f`: set OpenClaw date filter
+- `x`: delete OpenClaw conversations before a date
+- `c`: clear the active date filter
+
+## Install
+
+Install from source:
 
 ```bash
 make install
@@ -54,158 +130,88 @@ make uninstall
 
 If `~/.local/bin` is not on your `PATH`, add it before running `oac`.
 
-Homebrew is designed to use a separate tap repository. The planned install command is:
+Homebrew support is prepared around a separate tap repository. The intended command is:
 
 ```bash
 brew install carlisle0615/openagentcleaner/oac
 ```
 
-The release and tap workflow is documented in [docs/RELEASING.md](docs/RELEASING.md).
-The Homebrew tap layout is documented in [docs/HOMEBREW_TAP.md](docs/HOMEBREW_TAP.md).
+Release and tap notes:
 
-## Usage
+- [docs/RELEASING.md](docs/RELEASING.md)
+- [docs/HOMEBREW_TAP.md](docs/HOMEBREW_TAP.md)
 
-Launch the interactive home menu:
+## Commands
 
-```bash
-oac
-```
-
-Show the installed version:
+Show version:
 
 ```bash
 oac version
 ```
 
-Scan only:
+Scan specific assistants:
 
 ```bash
-oac scan
 oac scan --assistants openclaw,ollama
-oac scan --mode agent --json
 ```
 
-Clean `safe` items only:
+Preview a larger cleanup:
 
 ```bash
-oac clean
-oac clean --dry-run
-oac clean --mode agent --yes --json
+oac clean --include-confirm --dry-run
 ```
 
-Include `confirm` items in the cleanup set:
+Remove `confirm` items too:
 
 ```bash
 oac clean --include-confirm
-oac clean --include-confirm --dry-run
 oac clean --include-confirm --mode agent --yes --json
 ```
 
-## Safety Model
+Full discovery rules:
 
-The tool classifies discovered paths into three buckets:
-
-- `safe`: automatically eligible for cleanup.
-- `confirm`: only eligible when `--include-confirm` is provided.
-- `manual`: always excluded from deletion and shown for operator review only.
-
-This is intentionally conservative. For example, OpenClaw workspaces and Ollama SSH keys are not auto-deleted even during a full cleanup flow.
-
-## Discovery Rules
-
-### OpenClaw
-
-`safe`
-
-- `~/.openclaw/logs`
-- `/tmp/openclaw/*.log*`
-
-`confirm`
-
-- `~/.openclaw/agents`
-- `~/.openclaw/openclaw.json`
-- `~/.openclaw/.env`
-- `~/.openclaw/extensions`
-- `~/Library/LaunchAgents/ai.openclaw*.plist`
-- `~/Library/LaunchAgents/bot.molt*.plist`
-- `~/Library/LaunchAgents/com.openclaw*.plist`
-
-`manual`
-
-- `~/.openclaw/workspace`
-
-### IronClaw
-
-`safe`
-
-- `~/.ironclaw/logs`
-
-`confirm`
-
-- `~/.ironclaw/.env`
-- `~/.ironclaw/ironclaw.db`
-- `~/.ironclaw/config.toml`
-- `~/.ironclaw/session.json`
-- `~/.ironclaw/mcp-servers.json`
-- `~/.ironclaw/settings.json`
-- `~/.ironclaw/bootstrap.json`
-- `~/.ironclaw/channels`
-- `~/.ironclaw/tools`
-- `~/.ironclaw/history`
-- `~/.ironclaw/*-pairing.json`
-- `~/.ironclaw/*-allowFrom.json`
-- `~/.ironclaw/*-approve-attempts.json`
-- `~/Library/LaunchAgents/com.ironclaw.daemon.plist`
-
-### Ollama
-
-`safe`
-
-- `~/.ollama/logs`
-- `~/Library/Saved Application State/com.electron.ollama.savedState`
-- `~/Library/Caches/com.electron.ollama`
-- `~/Library/Caches/ollama`
-- `~/Library/WebKit/com.electron.ollama`
-
-`confirm`
-
-- `~/Library/Application Support/Ollama`
-- `~/.ollama/models` or `OLLAMA_MODELS`
-- `~/.ollama/server.json`
-- `/Applications/Ollama.app`
-- `/usr/local/bin/ollama`
-
-`manual`
-
-- `~/.ollama/id_ed25519`
-- `~/.ollama/id_ed25519.pub`
+- [docs/DISCOVERY_RULES.md](docs/DISCOVERY_RULES.md)
 
 ## Scope
 
-- Local macOS filesystem cleanup only.
-- No automatic cleanup of external databases, Keychain items, or cloud resources.
-- No package manager uninstall integration yet.
-- No automatic deletion of user-authored workspace content.
+- Local macOS filesystem cleanup only
+- No package manager uninstall integration yet
+- No automatic deletion of user-authored workspace content
+- No cleanup of Keychain items, cloud state, or external databases
 
 ## Development
 
-Format code:
+Install repository-managed hooks:
 
 ```bash
-make fmt
+make hooks
 ```
 
-Build:
+Run local checks:
 
 ```bash
-make build
+make verify-fast
+make verify-all
 ```
 
-Run tests:
+Protect `main` with required CI:
 
 ```bash
-make test
+make protect-main
 ```
+
+Git guardrails:
+
+- `pre-commit` runs `scripts/verify-fast.sh`
+- `pre-push` runs `scripts/verify-all.sh` only when pushing `main`
+- `--no-verify` still bypasses local hooks intentionally
+- GitHub `main` protection requires the `build-and-test` check before merge
+
+## Support
+
+- If OpenAgentCleaner saves you time, star the repo.
+- If you find a wrong deletion rule, open an issue before expanding cleanup scope.
+- If you want support for another assistant, open an issue with its macOS storage layout.
 
 ## Contributing
 
@@ -217,4 +223,4 @@ If you find a security issue or a deletion-safety bug, follow [SECURITY.md](SECU
 
 ## License
 
-This project is released under the MIT License. See [LICENSE](LICENSE).
+MIT License. See [LICENSE](LICENSE).
