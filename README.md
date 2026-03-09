@@ -21,7 +21,7 @@ The default command is `oac`.
 ## Why OpenAgentCleaner
 
 - Built for normal users: start from `oac`, scan first, and delete with clear confirmation.
-- Built for power users: JSON output, non-interactive mode, and script-friendly guardrails.
+- Built for power users and local agents: stable candidate IDs, JSON output, and explicit non-interactive deletion.
 - Built for assistant-specific cleanup: not just caches, but sessions, launch agents, models, and state.
 - Built to be conservative: `manual` paths stay review-only.
 
@@ -64,15 +64,15 @@ oac analyze --assistant openclaw --before 2026-03-01
 Clean only recommended leftovers:
 
 ```bash
-oac clean
-oac clean --dry-run
+oac clean --safety safe
+oac clean --safety safe --dry-run
 ```
 
-If you want to remove items that may contain saved sessions, settings, or models:
+If you want to remove specific review items such as models, target them explicitly:
 
 ```bash
-oac clean --include-confirm
-oac clean --include-confirm --dry-run
+oac clean --kind models --assistants ollama --dry-run
+oac clean --id <candidate-id> --dry-run
 ```
 
 Human-friendly commands stay in this README. If you want machine-readable output, CI usage, or scripted cleanup, use the agent guide:
@@ -98,7 +98,7 @@ This is intentionally conservative. For example:
 
 - OpenClaw workspaces are not auto-deleted.
 - Ollama SSH keys are not auto-deleted.
-- Agent mode refuses real deletion unless `--yes` is present.
+- Agent mode refuses real deletion unless both an explicit selector and `--yes` are present.
 
 ## Analyze Mode
 
@@ -170,7 +170,7 @@ oac scan --assistants openclaw,ollama
 Preview a larger cleanup:
 
 ```bash
-oac clean --include-confirm --dry-run
+oac clean --kind models,config --dry-run
 ```
 
 Full discovery rules:

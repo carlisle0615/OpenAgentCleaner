@@ -17,10 +17,12 @@ Agent mode is centered on `scan` and `clean`. The `analyze` command is human-onl
 ## Core Rules
 
 - Use `--mode agent --json` for structured output.
+- Read candidate `id` values from `scan` output and prefer `clean --id ...` for exact deletion.
 - Real deletion requires `--yes`.
+- Non-interactive cleanup also requires an explicit selector: `--id`, `--kind`, or `--safety`.
 - Safe previews can use `--dry-run` instead of `--yes`.
 - `manual` items are never auto-deleted.
-- `confirm` items are excluded unless `--include-confirm` is set.
+- `confirm` items are deletable only when you target them explicitly.
 
 ## Read-Only Scans
 
@@ -38,6 +40,9 @@ oac scan --assistants openclaw,ollama --mode agent --json
 
 This prints a JSON report with:
 
+- `candidates[].id`
+- `candidates[].deletable`
+- `candidates[].requires_confirmation`
 - `operation`
 - `mode`
 - `dry_run`
@@ -50,25 +55,25 @@ This prints a JSON report with:
 Preview a cleanup without deleting anything:
 
 ```bash
-oac clean --mode agent --dry-run --json
+oac clean --safety safe --mode agent --dry-run --json
 ```
 
 Delete only `safe` items:
 
 ```bash
-oac clean --mode agent --yes --json
+oac clean --safety safe --mode agent --yes --json
 ```
 
-Delete both `safe` and `confirm` items:
+Preview specific review items:
 
 ```bash
-oac clean --mode agent --include-confirm --yes --json
+oac clean --kind models --assistants ollama --mode agent --dry-run --json
 ```
 
-Preview both `safe` and `confirm` items:
+Delete exactly one scanned candidate:
 
 ```bash
-oac clean --mode agent --include-confirm --dry-run --json
+oac clean --id <candidate-id> --mode agent --yes --json
 ```
 
 ## Safety Model In Agent Runs
@@ -78,25 +83,25 @@ The deletion model is conservative:
 - `safe`
   Disposable logs, caches, and runtime leftovers.
 - `confirm`
-  Persistent local state such as sessions, settings, or models. These are skipped unless `--include-confirm` is provided.
+  Persistent local state such as sessions, settings, or models. These are skipped unless you target them explicitly.
 - `manual`
   Visibility-only items that require human judgment. These are reported but not deleted.
 
-If you run `clean` non-interactively without `--yes` or `--dry-run`, the command fails instead of guessing intent.
+If you run `clean` non-interactively without an explicit selector plus `--yes` or `--dry-run`, the command fails instead of guessing intent.
 
 ## Recommended Automation Pattern
 
 1. Run `scan --mode agent --json` and inspect `summary`.
-2. Run `clean --dry-run --mode agent --json` before any real deletion.
-3. Add `--include-confirm` only when you intentionally want to remove saved state.
-4. Use `--yes` only in the final destructive step.
+2. Build a preview with `clean --id ... --dry-run` or `clean --kind ... --dry-run`.
+3. Use `--yes` only in the final destructive step.
+4. Prefer `--id` over broader selectors when you need deterministic cleanup.
 
 Example:
 
 ```bash
 oac scan --assistants openclaw,ironclaw,ollama --mode agent --json
-oac clean --assistants openclaw,ironclaw,ollama --mode agent --include-confirm --dry-run --json
-oac clean --assistants openclaw,ironclaw,ollama --mode agent --include-confirm --yes --json
+oac clean --assistants ollama --kind models --mode agent --dry-run --json
+oac clean --id <candidate-id> --mode agent --yes --json
 ```
 
 ## Human-Only Boundaries

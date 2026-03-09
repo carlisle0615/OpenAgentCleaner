@@ -108,26 +108,22 @@ func printNextSteps(w io.Writer, ui humanUI, report Report, safeStats, confirmSt
 	ui.section("What to do next", "")
 	switch {
 	case !isClean && safeStats.Count > 0:
-		fmt.Fprintf(w, "  1. Run `%s clean --dry-run` to preview the safe cleanup.\n", cmd)
-		fmt.Fprintf(w, "  2. Run `%s clean` to remove the recommended leftovers.\n", cmd)
+		fmt.Fprintf(w, "  1. Run `%s clean --safety safe --dry-run` to preview the recommended cleanup.\n", cmd)
+		fmt.Fprintf(w, "  2. Run `%s clean --safety safe` to remove the recommended leftovers.\n", cmd)
 		if confirmStats.Count > 0 {
-			fmt.Fprintf(w, "  3. Run `%s clean --include-confirm` only if you want to remove saved sessions, models, or settings too.\n", cmd)
+			fmt.Fprintf(w, "  3. Run `%s clean --kind models --assistants ollama --dry-run` or target a specific candidate ID if you want to remove review items such as models.\n", cmd)
 		}
 	case !isClean && confirmStats.Count > 0:
 		fmt.Fprintf(w, "  1. Review the items above carefully.\n")
-		fmt.Fprintf(w, "  2. Run `%s clean --include-confirm --dry-run` to preview a fuller cleanup.\n", cmd)
+		fmt.Fprintf(w, "  2. Run `%s clean --kind <kind> --dry-run` or `%s clean --id <candidate-id> --dry-run` to preview explicit review-item cleanup.\n", cmd, cmd)
 	case isClean && report.Summary.SelectedCount == 0 && report.Summary.DeletedCount == 0:
 		fmt.Fprintf(w, "  1. No changes were applied.\n")
-		fmt.Fprintf(w, "  2. Run `%s clean --dry-run` if you want a preview first.\n", cmd)
+		fmt.Fprintf(w, "  2. Run `%s clean --safety safe --dry-run` if you want a preview first.\n", cmd)
 		if confirmStats.Count > 0 {
-			fmt.Fprintf(w, "  3. Use `%s clean --include-confirm` only when you intend to remove saved models, sessions, or settings.\n", cmd)
+			fmt.Fprintf(w, "  3. Use `%s clean --kind <kind>` or `%s clean --id <candidate-id>` when you intend to remove models, sessions, or settings.\n", cmd, cmd)
 		}
 	case isClean && report.DryRun:
-		applyCommand := cmd + " clean"
-		if selectedHasConfirm(report) {
-			applyCommand += " --include-confirm"
-		}
-		fmt.Fprintf(w, "  1. If the preview looks right, run `%s` to apply it.\n", applyCommand)
+		fmt.Fprintf(w, "  1. If the preview looks right, rerun the same command with `--yes` and without `--dry-run`.\n")
 		fmt.Fprintf(w, "  2. Use the guided home screen with `%s` if you want a step-by-step flow.\n", cmd)
 	default:
 		fmt.Fprintf(w, "  1. Manual-only items still need your review.\n")

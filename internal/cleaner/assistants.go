@@ -27,7 +27,11 @@ func discoverCandidates(assistants []string) ([]Candidate, error) {
 
 	all = dedupeCandidates(all)
 	for i := range all {
+		all[i].Path = cleanPath(all[i].Path)
+		all[i].ID = candidateID(all[i].Assistant, all[i].Kind, all[i].Path)
 		all[i].SizeBytes = pathSize(all[i].Path)
+		all[i].Deletable = all[i].Safety != SafetyManual
+		all[i].RequiresConfirmation = all[i].Safety == SafetyConfirm
 	}
 	sort.Slice(all, func(i, j int) bool {
 		if all[i].Assistant != all[j].Assistant {
@@ -358,7 +362,6 @@ func dedupeCandidates(candidates []Candidate) []Candidate {
 			continue
 		}
 		seen[key] = struct{}{}
-		candidate.Path = cleanPath(candidate.Path)
 		out = append(out, candidate)
 	}
 	return out

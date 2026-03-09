@@ -54,7 +54,7 @@ func runHomeMenu(stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "2. Analyze conversations and leftovers")
 		fmt.Fprintln(stdout, "3. Preview cleanup for safe items")
 		fmt.Fprintln(stdout, "4. Remove safe leftovers")
-		fmt.Fprintln(stdout, "5. Guided full cleanup")
+		fmt.Fprintln(stdout, "5. Guided targeted cleanup")
 		fmt.Fprintln(stdout, "6. Show command help")
 		fmt.Fprintln(stdout, "7. Quit")
 		fmt.Fprintf(stdout, "\nChoose an option [1-7] (%s): ", cmd+" scan")
@@ -71,11 +71,11 @@ func runHomeMenu(stdout, stderr io.Writer) int {
 		case "2", "analyze", "a":
 			return runAnalyze(nil, stdout, stderr)
 		case "3", "preview", "p":
-			return runClean([]string{"--dry-run"}, stdout, stderr)
+			return runClean([]string{"--safety", "safe", "--dry-run"}, stdout, stderr)
 		case "4", "clean", "c":
-			return runClean(nil, stdout, stderr)
+			return runClean([]string{"--safety", "safe"}, stdout, stderr)
 		case "5", "clean-all", "confirm", "full":
-			return runClean([]string{"--include-confirm"}, stdout, stderr)
+			return runClean(nil, stdout, stderr)
 		case "6", "help", "h":
 			printRootHelp(stdout)
 			fmt.Fprintln(stdout)
@@ -133,16 +133,20 @@ func runClean(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 
 	var rawAssistants string
+	var rawIDs string
+	var rawKinds string
+	var rawSafeties string
 	var mode string
 	var jsonOutput bool
-	var includeConfirm bool
 	var yes bool
 	var dryRun bool
 
 	fs.StringVar(&rawAssistants, "assistants", strings.Join(defaultAssistants(), ","), "comma-separated assistants: openclaw,ironclaw,ollama")
+	fs.StringVar(&rawIDs, "id", "", "comma-separated candidate IDs from `oac scan`")
+	fs.StringVar(&rawKinds, "kind", "", "comma-separated kinds such as logs,models,config")
+	fs.StringVar(&rawSafeties, "safety", "", "comma-separated safety buckets to target: safe,confirm")
 	fs.StringVar(&mode, "mode", "auto", "output mode: auto, human, agent")
 	fs.BoolVar(&jsonOutput, "json", false, "emit JSON")
-	fs.BoolVar(&includeConfirm, "include-confirm", false, "include items that require explicit confirmation")
 	fs.BoolVar(&yes, "yes", false, "skip prompts and delete all eligible items")
 	fs.BoolVar(&dryRun, "dry-run", false, "preview cleanup without deleting")
 
@@ -155,14 +159,21 @@ func runClean(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
+	safeties, err := parseSafetyList(rawSafeties)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 2
+	}
 
 	report, err := cleanReport(options{
-		Assistants:     assistants,
-		Mode:           mode,
-		JSON:           jsonOutput,
-		IncludeConfirm: includeConfirm,
-		Yes:            yes,
-		DryRun:         dryRun,
+		Assistants:   assistants,
+		CandidateIDs: parseCSV(rawIDs),
+		Kinds:        parseCSV(strings.ToLower(rawKinds)),
+		Safeties:     safeties,
+		Mode:         mode,
+		JSON:         jsonOutput,
+		Yes:          yes,
+		DryRun:       dryRun,
 	}, stdout, stderr)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -204,7 +215,10 @@ func cleanReport(opts options, stdout, stderr io.Writer) (Report, error) {
 	report.Mode = mode
 	report.DryRun = opts.DryRun
 
-	eligibleIndexes := eligibleCandidates(report.Candidates, opts.IncludeConfirm)
+	eligibleIndexes, explicitlyScoped, err := selectCleanCandidates(report.Candidates, opts)
+	if err != nil {
+		return Report{}, err
+	}
 	if len(eligibleIndexes) == 0 {
 		return report, nil
 	}
@@ -218,6 +232,9 @@ func cleanReport(opts options, stdout, stderr io.Writer) (Report, error) {
 			report.Candidates[idx].Skipped = true
 		}
 	case mode == "agent" || !isTerminal(os.Stdin):
+		if !explicitlyScoped {
+			return Report{}, errors.New("non-interactive cleanup requires an explicit selector via --id, --kind, or --safety")
+		}
 		if !opts.Yes {
 			return Report{}, errors.New("non-interactive cleanup requires --yes or --dry-run")
 		}
@@ -226,7 +243,7 @@ func cleanReport(opts options, stdout, stderr io.Writer) (Report, error) {
 			report.Candidates[idx].Selected = true
 		}
 	default:
-		chosen, err := promptSelection(stdout, stderr, report.Candidates, eligibleIndexes, opts.IncludeConfirm)
+		chosen, err := promptSelection(stdout, stderr, report.Candidates, eligibleIndexes, explicitlyScoped)
 		if err != nil {
 			return Report{}, err
 		}
@@ -261,25 +278,9 @@ func cleanReport(opts options, stdout, stderr io.Writer) (Report, error) {
 	return report, nil
 }
 
-func eligibleCandidates(candidates []Candidate, includeConfirm bool) []int {
-	indexes := make([]int, 0, len(candidates))
-	for i, candidate := range candidates {
-		switch candidate.Safety {
-		case SafetySafe:
-			indexes = append(indexes, i)
-		case SafetyConfirm:
-			if includeConfirm {
-				indexes = append(indexes, i)
-			}
-		}
-	}
-	return indexes
-}
-
-func promptSelection(stdout, stderr io.Writer, candidates []Candidate, eligible []int, includeConfirm bool) ([]int, error) {
+func promptSelection(stdout, stderr io.Writer, candidates []Candidate, eligible []int, explicitlyScoped bool) ([]int, error) {
 	ui := newHumanUI(stdout)
 	safeOnly := filterIndexesBySafety(candidates, eligible, SafetySafe)
-	confirmOnly := filterIndexesBySafety(candidates, eligible, SafetyConfirm)
 
 	ui.section("Choose what to remove", "Nothing will be deleted until you confirm.")
 	for i, idx := range eligible {
@@ -288,11 +289,11 @@ func promptSelection(stdout, stderr io.Writer, candidates []Candidate, eligible 
 	}
 
 	fmt.Fprintln(stdout)
-	if includeConfirm && len(confirmOnly) > 0 {
+	if !explicitlyScoped && len(safeOnly) > 0 {
 		fmt.Fprintf(stdout, "%s Press Enter to remove only the recommended safe items.\n", ui.badgeMuted("Recommended"))
 		fmt.Fprintln(stdout, "Type `safe` for safe items only, `all` for everything listed, `none` to cancel, or `1,3` to choose specific items.")
 	} else {
-		fmt.Fprintf(stdout, "%s Press Enter to remove all safe items shown above.\n", ui.badgeMuted("Recommended"))
+		fmt.Fprintf(stdout, "%s Press Enter to remove all items shown above.\n", ui.badgeMuted("Recommended"))
 		fmt.Fprintln(stdout, "Type `all`, `none`, or `1,3` to choose specific items.")
 	}
 	fmt.Fprint(stdout, "Your choice: ")
@@ -306,10 +307,7 @@ func promptSelection(stdout, stderr io.Writer, candidates []Candidate, eligible 
 	line = strings.ToLower(strings.TrimSpace(line))
 	switch line {
 	case "":
-		if includeConfirm && len(confirmOnly) > 0 {
-			if len(safeOnly) == 0 {
-				return nil, nil
-			}
+		if !explicitlyScoped && len(safeOnly) > 0 {
 			return safeOnly, nil
 		}
 		return eligible, nil
@@ -429,24 +427,39 @@ func printRootHelp(w io.Writer) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Core commands:")
 	fmt.Fprintf(w, "  %s scan\n", cmd)
-	fmt.Fprintln(w, "  Scan your Mac and show what can be cleaned.")
+	fmt.Fprintln(w, "  Scan your Mac and emit stable candidate IDs plus deletion metadata.")
 	fmt.Fprintf(w, "  %s analyze\n", cmd)
 	fmt.Fprintln(w, "  Browse conversations and leftovers, then delete specific items interactively.")
 	fmt.Fprintf(w, "  %s clean\n", cmd)
-	fmt.Fprintln(w, "  Remove only safe leftovers.")
-	fmt.Fprintf(w, "  %s clean --include-confirm\n", cmd)
-	fmt.Fprintln(w, "  Include items that may contain sessions, settings, or models.")
+	fmt.Fprintln(w, "  Apply a targeted cleanup using explicit selectors such as `--safety`, `--kind`, or `--id`.")
 	fmt.Fprintf(w, "  %s version\n", cmd)
 	fmt.Fprintln(w, "  Print the installed version.")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Automation examples:")
+	fmt.Fprintln(w, "Agent-first workflow:")
 	fmt.Fprintf(w, "  %s scan --mode agent --json\n", cmd)
-	fmt.Fprintf(w, "  %s clean --mode agent --yes --json\n", cmd)
-	fmt.Fprintf(w, "  %s analyze --assistant openclaw\n", cmd)
+	fmt.Fprintln(w, "  Discover candidates and capture stable IDs for automation.")
+	fmt.Fprintf(w, "  %s clean --safety safe --dry-run --mode agent --json\n", cmd)
+	fmt.Fprintln(w, "  Preview only `safe` items.")
+	fmt.Fprintf(w, "  %s clean --kind models --assistants ollama --dry-run --mode agent --json\n", cmd)
+	fmt.Fprintln(w, "  Preview Ollama model deletion explicitly.")
+	fmt.Fprintf(w, "  %s clean --id <candidate-id> --yes --mode agent --json\n", cmd)
+	fmt.Fprintln(w, "  Delete exactly one scanned candidate non-interactively.")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Human workflow:")
+	fmt.Fprintf(w, "  %s\n", cmd)
+	fmt.Fprintln(w, "  Opens the guided home screen.")
+	fmt.Fprintf(w, "  %s clean --safety safe\n", cmd)
+	fmt.Fprintln(w, "  Remove recommended leftovers with a confirmation screen.")
+	fmt.Fprintf(w, "  %s clean\n", cmd)
+	fmt.Fprintln(w, "  Guided targeted cleanup across all deletable items.")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Human-only boundary:")
+	fmt.Fprintf(w, "  %s analyze\n", cmd)
+	fmt.Fprintln(w, "  Interactive TUI for people. Not designed for agents and currently rejects `--mode agent` and `--json`.")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Safety rules:")
 	fmt.Fprintln(w, "  - `safe` items can be removed directly.")
-	fmt.Fprintln(w, "  - `confirm` items require explicit intent.")
+	fmt.Fprintln(w, "  - `confirm` items require explicit targeting plus confirmation.")
 	fmt.Fprintln(w, "  - `manual` items are shown for review only and are never auto-deleted.")
 }
 
@@ -476,4 +489,72 @@ func filterIndexesBySafety(candidates []Candidate, indexes []int, safety Safety)
 		}
 	}
 	return filtered
+}
+
+func selectCleanCandidates(candidates []Candidate, opts options) ([]int, bool, error) {
+	idSet := make(map[string]struct{}, len(opts.CandidateIDs))
+	for _, id := range opts.CandidateIDs {
+		idSet[id] = struct{}{}
+	}
+	kindSet := make(map[string]struct{}, len(opts.Kinds))
+	for _, kind := range opts.Kinds {
+		kindSet[kind] = struct{}{}
+	}
+	safetySet := make(map[Safety]struct{}, len(opts.Safeties))
+	for _, safety := range opts.Safeties {
+		safetySet[safety] = struct{}{}
+	}
+
+	explicitlyScoped := len(idSet) > 0 || len(kindSet) > 0 || len(safetySet) > 0
+	indexes := make([]int, 0, len(candidates))
+	foundIDs := map[string]struct{}{}
+	for i, candidate := range candidates {
+		if !candidate.Deletable {
+			continue
+		}
+		if !explicitlyScoped {
+			continue
+		}
+		if len(idSet) > 0 {
+			if _, ok := idSet[candidate.ID]; !ok {
+				continue
+			}
+			foundIDs[candidate.ID] = struct{}{}
+		}
+		if len(kindSet) > 0 {
+			if _, ok := kindSet[strings.ToLower(candidate.Kind)]; !ok {
+				continue
+			}
+		}
+		if len(safetySet) > 0 {
+			if _, ok := safetySet[candidate.Safety]; !ok {
+				continue
+			}
+		}
+		indexes = append(indexes, i)
+	}
+
+	if len(idSet) > 0 {
+		missing := make([]string, 0, len(idSet))
+		for id := range idSet {
+			if _, ok := foundIDs[id]; !ok {
+				missing = append(missing, id)
+			}
+		}
+		sort.Strings(missing)
+		if len(missing) > 0 {
+			return nil, explicitlyScoped, fmt.Errorf("unknown or non-deletable candidate id(s): %s", strings.Join(missing, ", "))
+		}
+	}
+
+	if explicitlyScoped {
+		return indexes, true, nil
+	}
+
+	for i, candidate := range candidates {
+		if candidate.Deletable {
+			indexes = append(indexes, i)
+		}
+	}
+	return indexes, false, nil
 }

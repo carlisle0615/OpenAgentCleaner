@@ -63,7 +63,7 @@ Last updated: 2026-03-09
 5. `scanReport` / `cleanReport` assemble runtime options and call `discoverCandidates`
 6. `assistants.go` gathers candidate paths per assistant and labels them as `safe`, `confirm`, or `manual`
 7. `openclaw_sessions.go` reads `sessions.json` plus `*.jsonl` transcript files to support selective conversation cleanup
-8. `cleanReport` decides deletion eligibility and confirmation flow based on mode, `--include-confirm`, `--yes`, and `--dry-run`
+8. `cleanReport` decides deletion eligibility and confirmation flow based on explicit selectors (`--id`, `--kind`, `--safety`), plus `--yes` and `--dry-run`
 9. The final report is emitted through `output.go` or JSON serialization
 
 ## Current Module Boundaries
@@ -100,7 +100,7 @@ Last updated: 2026-03-09
 
 - The rules in `assistants.go` are deletion boundaries; bad classification can become real data loss
 - `manual` is the last safety boundary and should not be downgraded just because a path looks cache-like
-- The non-interactive behavior in `cleanReport` depends on `--yes` / `--dry-run`; this is a core agent-mode guardrail
+- The non-interactive behavior in `cleanReport` depends on explicit selectors plus `--yes` / `--dry-run`; this is a core agent-mode guardrail
 - `openclaw_sessions.go` edits `sessions.json` after transcript deletions; mismatches there can create orphaned metadata or confusing UX
 - CI runs on `macos-latest`, while the release workflow runs GoReleaser plus `go test ./...` on `ubuntu-latest`; tests must stay cross-platform unless they are explicitly guarded
 - The release installer and Homebrew formula generator assume archive names shaped like `oac_<version>_darwin_<arch>.tar.gz`
