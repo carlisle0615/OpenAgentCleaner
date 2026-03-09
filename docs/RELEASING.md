@@ -10,8 +10,8 @@ This project ships macOS release archives through GitHub Releases and publishes 
 ```bash
 git checkout main
 git pull --ff-only
-git tag v0.1.2
-git push origin v0.1.2
+git tag v0.1.3
+git push origin v0.1.3
 ```
 
 The release workflow will build:
@@ -49,8 +49,8 @@ That command expects a tap repository named `homebrew-openagentcleaner` under th
 Generate the formula after a release:
 
 ```bash
-gh release download v0.1.2 -p checksums.txt -D dist/release-artifacts
-./scripts/generate-homebrew-formula.sh v0.1.2 dist/release-artifacts/checksums.txt > Formula/oac.rb
+gh release download v0.1.3 -p checksums.txt -D dist/release-artifacts
+./scripts/generate-homebrew-formula.sh v0.1.3 dist/release-artifacts/checksums.txt > Formula/oac.rb
 ```
 
 Then commit `Formula/oac.rb` into the tap repository `carlisle0615/homebrew-openagentcleaner`.
