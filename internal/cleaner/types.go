@@ -9,6 +9,10 @@ import (
 	"strings"
 )
 
+const appName = "OpenAgentCleaner"
+
+var Version = "dev"
+
 type Safety string
 
 const (

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -26,6 +27,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runScan(args[1:], stdout, stderr)
 	case "clean":
 		return runClean(args[1:], stdout, stderr)
+	case "version", "--version", "-v":
+		printVersion(stdout)
+		return 0
 	case "-h", "--help", "help":
 		printRootHelp(stdout)
 		return 0
@@ -38,16 +42,19 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 func runHomeMenu(stdout, stderr io.Writer) int {
 	reader := bufio.NewReader(os.Stdin)
+	ui := newHumanUI(stdout)
 
 	for {
 		cmd := commandName()
-		fmt.Fprintf(stdout, "%s\n\n", cmd)
-		fmt.Fprintln(stdout, "1. Scan all supported assistants")
-		fmt.Fprintln(stdout, "2. Clean safe items")
-		fmt.Fprintln(stdout, "3. Clean safe and confirm items")
-		fmt.Fprintln(stdout, "4. Show help")
-		fmt.Fprintln(stdout, "5. Quit")
-		fmt.Fprint(stdout, "\nSelect action [1-5]: ")
+		ui.banner(appName, "Clean leftover AI assistant files on your Mac without guessing what is safe to remove.")
+		fmt.Fprintf(stdout, "%s First step: run a scan. A scan never deletes anything.\n\n", ui.badgeMuted("Recommended"))
+		fmt.Fprintln(stdout, "1. Scan this Mac")
+		fmt.Fprintln(stdout, "2. Preview cleanup for safe items")
+		fmt.Fprintln(stdout, "3. Remove safe leftovers")
+		fmt.Fprintln(stdout, "4. Guided full cleanup")
+		fmt.Fprintln(stdout, "5. Show command help")
+		fmt.Fprintln(stdout, "6. Quit")
+		fmt.Fprintf(stdout, "\nChoose an option [1-6] (%s): ", cmd+" scan")
 
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -56,16 +63,18 @@ func runHomeMenu(stdout, stderr io.Writer) int {
 		}
 
 		switch strings.ToLower(strings.TrimSpace(line)) {
-		case "1", "scan", "s":
+		case "", "1", "scan", "s":
 			return runScan(nil, stdout, stderr)
-		case "2", "clean", "c":
+		case "2", "preview", "p":
+			return runClean([]string{"--dry-run"}, stdout, stderr)
+		case "3", "clean", "c":
 			return runClean(nil, stdout, stderr)
-		case "3", "clean-all", "confirm", "a":
+		case "4", "clean-all", "confirm", "a":
 			return runClean([]string{"--include-confirm"}, stdout, stderr)
-		case "4", "help", "h":
+		case "5", "help", "h":
 			printRootHelp(stdout)
 			fmt.Fprintln(stdout)
-		case "5", "quit", "q", "exit":
+		case "6", "quit", "q", "exit":
 			return 0
 		default:
 			fmt.Fprintf(stderr, "unknown action %q\n\n", strings.TrimSpace(line))
@@ -212,7 +221,7 @@ func cleanReport(opts options, stdout, stderr io.Writer) (Report, error) {
 			report.Candidates[idx].Selected = true
 		}
 	default:
-		chosen, err := promptSelection(stdout, stderr, report.Candidates, eligibleIndexes)
+		chosen, err := promptSelection(stdout, stderr, report.Candidates, eligibleIndexes, opts.IncludeConfirm)
 		if err != nil {
 			return Report{}, err
 		}
@@ -262,13 +271,26 @@ func eligibleCandidates(candidates []Candidate, includeConfirm bool) []int {
 	return indexes
 }
 
-func promptSelection(stdout, stderr io.Writer, candidates []Candidate, eligible []int) ([]int, error) {
-	fmt.Fprintln(stdout, "Eligible cleanup targets:")
+func promptSelection(stdout, stderr io.Writer, candidates []Candidate, eligible []int, includeConfirm bool) ([]int, error) {
+	ui := newHumanUI(stdout)
+	safeOnly := filterIndexesBySafety(candidates, eligible, SafetySafe)
+	confirmOnly := filterIndexesBySafety(candidates, eligible, SafetyConfirm)
+
+	ui.section("Choose what to remove", "Nothing will be deleted until you confirm.")
 	for i, idx := range eligible {
 		candidate := candidates[idx]
-		fmt.Fprintf(stdout, "  [%d] %-10s %-14s %-7s %8s  %s\n", i+1, candidate.Assistant, candidate.Kind, candidate.Safety, formatBytes(candidate.SizeBytes), candidate.Path)
+		fmt.Fprintf(stdout, "  [%d] %-16s %-10s %8s  %s\n", i+1, displayKind(candidate.Kind), string(candidate.Safety), formatBytes(candidate.SizeBytes), candidate.Path)
 	}
-	fmt.Fprintln(stdout, "\nEnter indexes to delete (`all`, `none`, or comma-separated values):")
+
+	fmt.Fprintln(stdout)
+	if includeConfirm && len(confirmOnly) > 0 {
+		fmt.Fprintf(stdout, "%s Press Enter to remove only the recommended safe items.\n", ui.badgeMuted("Recommended"))
+		fmt.Fprintln(stdout, "Type `safe` for safe items only, `all` for everything listed, `none` to cancel, or `1,3` to choose specific items.")
+	} else {
+		fmt.Fprintf(stdout, "%s Press Enter to remove all safe items shown above.\n", ui.badgeMuted("Recommended"))
+		fmt.Fprintln(stdout, "Type `all`, `none`, or `1,3` to choose specific items.")
+	}
+	fmt.Fprint(stdout, "Your choice: ")
 
 	reader := bufio.NewReader(os.Stdin)
 	line, err := reader.ReadString('\n')
@@ -278,7 +300,17 @@ func promptSelection(stdout, stderr io.Writer, candidates []Candidate, eligible 
 
 	line = strings.ToLower(strings.TrimSpace(line))
 	switch line {
-	case "", "none", "n":
+	case "":
+		if includeConfirm && len(confirmOnly) > 0 {
+			if len(safeOnly) == 0 {
+				return nil, nil
+			}
+			return safeOnly, nil
+		}
+		return eligible, nil
+	case "safe":
+		return safeOnly, nil
+	case "none", "n":
 		return nil, nil
 	case "all", "a":
 		return eligible, nil
@@ -305,11 +337,32 @@ func promptSelection(stdout, stderr io.Writer, candidates []Candidate, eligible 
 func confirmDeletion(stdout, stderr io.Writer, candidates []Candidate, selected map[int]struct{}) bool {
 	var count int
 	var bytes int64
+	var requiresStrongConfirm bool
+	selectedIndexes := make([]int, 0, len(selected))
 	for idx := range selected {
 		count++
 		bytes += candidates[idx].SizeBytes
+		selectedIndexes = append(selectedIndexes, idx)
+		if candidates[idx].Safety == SafetyConfirm {
+			requiresStrongConfirm = true
+		}
 	}
-	fmt.Fprintf(stdout, "Delete %d target(s), reclaiming about %s? [y/N]: ", count, formatBytes(bytes))
+
+	sort.Ints(selectedIndexes)
+	ui := newHumanUI(stdout)
+	ui.section("Final confirmation", "These files will be permanently removed from this Mac.")
+	for _, idx := range selectedIndexes {
+		candidate := candidates[idx]
+		fmt.Fprintf(stdout, "  - %-16s %-10s %8s  %s\n", displayKind(candidate.Kind), string(candidate.Safety), formatBytes(candidate.SizeBytes), candidate.Path)
+	}
+	fmt.Fprintln(stdout)
+	fmt.Fprintf(stdout, "This will remove %d item(s) and reclaim about %s.\n", count, formatBytes(bytes))
+	confirmationWord := "yes"
+	if requiresStrongConfirm {
+		fmt.Fprintf(stdout, "%s Some selected items may contain models, sessions, or saved settings.\n", ui.badgeWarn("Review"))
+		confirmationWord = "delete"
+	}
+	fmt.Fprintf(stdout, "Type %q to continue: ", confirmationWord)
 	reader := bufio.NewReader(os.Stdin)
 	line, err := reader.ReadString('\n')
 	if err != nil {
@@ -317,6 +370,9 @@ func confirmDeletion(stdout, stderr io.Writer, candidates []Candidate, selected 
 		return false
 	}
 	line = strings.ToLower(strings.TrimSpace(line))
+	if confirmationWord == "delete" {
+		return line == "delete"
+	}
 	return line == "y" || line == "yes"
 }
 
@@ -359,18 +415,35 @@ func summarize(candidates []Candidate) Summary {
 
 func printRootHelp(w io.Writer) {
 	cmd := commandName()
-	fmt.Fprintln(w, "OpenAgentCleaner")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintf(w, "  %s scan  [--assistants openclaw,ironclaw,ollama] [--mode auto|human|agent] [--json]\n", cmd)
-	fmt.Fprintf(w, "  %s clean [--assistants openclaw,ironclaw,ollama] [--include-confirm] [--yes] [--dry-run] [--mode auto|human|agent] [--json]\n", cmd)
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Notes:")
-	fmt.Fprintf(w, "  - Run `%s` with no arguments for the interactive menu.\n", cmd)
-	fmt.Fprintln(w, "  - `scan` only discovers residue and classifications.")
-	fmt.Fprintln(w, "  - `clean` removes only `safe` items by default.")
-	fmt.Fprintln(w, "  - `--include-confirm` adds items that require explicit user intent.")
-	fmt.Fprintln(w, "  - `manual` items are never auto-deleted in this version.")
+	ui := newHumanUI(w)
+	ui.banner(appName, "A guided macOS cleaner for leftover AI assistant files.")
+	fmt.Fprintf(w, "Command: %s\nVersion: %s\n\n", cmd, Version)
+	fmt.Fprintln(w, "Start here:")
+	fmt.Fprintf(w, "  %s\n", cmd)
+	fmt.Fprintln(w, "  Opens the guided home screen.")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Core commands:")
+	fmt.Fprintf(w, "  %s scan\n", cmd)
+	fmt.Fprintln(w, "  Scan your Mac and show what can be cleaned.")
+	fmt.Fprintf(w, "  %s clean\n", cmd)
+	fmt.Fprintln(w, "  Remove only safe leftovers.")
+	fmt.Fprintf(w, "  %s clean --include-confirm\n", cmd)
+	fmt.Fprintln(w, "  Include items that may contain sessions, settings, or models.")
+	fmt.Fprintf(w, "  %s version\n", cmd)
+	fmt.Fprintln(w, "  Print the installed version.")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Automation examples:")
+	fmt.Fprintf(w, "  %s scan --mode agent --json\n", cmd)
+	fmt.Fprintf(w, "  %s clean --mode agent --yes --json\n", cmd)
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Safety rules:")
+	fmt.Fprintln(w, "  - `safe` items can be removed directly.")
+	fmt.Fprintln(w, "  - `confirm` items require explicit intent.")
+	fmt.Fprintln(w, "  - `manual` items are shown for review only and are never auto-deleted.")
+}
+
+func printVersion(w io.Writer) {
+	fmt.Fprintf(w, "%s %s\n", commandName(), Version)
 }
 
 func isInteractiveSession() bool {
@@ -380,9 +453,19 @@ func isInteractiveSession() bool {
 func commandName() string {
 	name := filepath.Base(os.Args[0])
 	switch name {
-	case "", ".", "OpenAgentCleaner":
+	case "", ".", appName:
 		return "oac"
 	default:
 		return name
 	}
+}
+
+func filterIndexesBySafety(candidates []Candidate, indexes []int, safety Safety) []int {
+	filtered := make([]int, 0, len(indexes))
+	for _, idx := range indexes {
+		if candidates[idx].Safety == safety {
+			filtered = append(filtered, idx)
+		}
+	}
+	return filtered
 }
