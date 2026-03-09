@@ -1,12 +1,17 @@
 # Releasing
 
-This project ships macOS release archives through GitHub Releases.
+This project ships macOS release archives through GitHub Releases and publishes a matching Homebrew formula through a separate tap repository.
 
 ## Tag a Release
 
+1. Merge the release-ready branch into `main`.
+2. Create and push a new semantic version tag.
+
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git checkout main
+git pull --ff-only
+git tag v0.1.2
+git push origin v0.1.2
 ```
 
 The release workflow will build:
@@ -14,6 +19,8 @@ The release workflow will build:
 - `oac_<version>_darwin_arm64.tar.gz`
 - `oac_<version>_darwin_amd64.tar.gz`
 - `checksums.txt`
+
+The workflow definition lives in `.github/workflows/release.yml` and runs on `ubuntu-latest`. Because `.goreleaser.yaml` executes `go test ./...` in a `before.hooks` step, all release-gating tests must be portable to Linux even if the shipped binaries are macOS-only.
 
 ## One-Line Install
 
@@ -42,13 +49,14 @@ That command expects a tap repository named `homebrew-openagentcleaner` under th
 Generate the formula after a release:
 
 ```bash
-./scripts/generate-homebrew-formula.sh v0.1.0 dist/checksums.txt > Formula/oac.rb
+gh release download v0.1.2 -p checksums.txt -D dist/release-artifacts
+./scripts/generate-homebrew-formula.sh v0.1.2 dist/release-artifacts/checksums.txt > Formula/oac.rb
 ```
 
-Then commit `Formula/oac.rb` into the tap repository.
+Then commit `Formula/oac.rb` into the tap repository `carlisle0615/homebrew-openagentcleaner`.
 
 ## Notes
 
 - The current installer supports macOS only.
-- The current Homebrew packaging plan targets a separate tap repo, not this source repository.
+- The Homebrew formula should be updated only after the GitHub Release assets are visible and checksums are final.
 - `oac version` reads the release version injected at build time.

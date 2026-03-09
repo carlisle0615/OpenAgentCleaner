@@ -4,7 +4,7 @@
 
 ## Recommended Repository
 
-Create this repository under the same GitHub account:
+Use this repository under the same GitHub account:
 
 ```text
 carlisle0615/homebrew-openagentcleaner
@@ -29,7 +29,8 @@ homebrew-openagentcleaner/
 After a successful release, download `checksums.txt` from the GitHub Release page and run:
 
 ```bash
-./scripts/generate-homebrew-formula.sh v0.1.1 checksums.txt > Formula/oac.rb
+gh release download v0.1.2 -p checksums.txt -D dist/release-artifacts
+./scripts/generate-homebrew-formula.sh v0.1.2 dist/release-artifacts/checksums.txt > Formula/oac.rb
 ```
 
 The generated formula will point to:
@@ -45,7 +46,7 @@ Inside the tap repository:
 mkdir -p Formula
 cp /path/to/generated/oac.rb Formula/oac.rb
 git add Formula/oac.rb
-git commit -m "feat: add oac v0.1.1 formula"
+git commit -m "feat: add oac v0.1.2 formula"
 git push origin main
 ```
 

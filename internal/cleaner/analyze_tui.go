@@ -18,6 +18,7 @@ const (
 	screenAssistants analyzeScreen = iota
 	screenOpenClawMenu
 	screenSessions
+	screenSessionPreview
 	screenCandidates
 )
 
@@ -84,6 +85,7 @@ type analyzeModel struct {
 	confirmItem     Candidate
 	status          string
 	lastErr         error
+	previewText     string
 }
 
 func runAnalyzeTUI(assistants []string, before time.Time, stdout, stderr io.Writer) error {
@@ -373,6 +375,18 @@ func (m *analyzeModel) activateSelection() error {
 		}
 		m.screen = screenCandidates
 		return m.reloadCandidates("openclaw")
+	case screenSessions:
+		if len(m.sessions) == 0 {
+			return nil
+		}
+		session := m.sessions[m.sessionIndex]
+		preview, err := previewOpenClawSession(session.TranscriptPath)
+		if err != nil {
+			return err
+		}
+		m.previewText = preview
+		m.screen = screenSessionPreview
+		return nil
 	}
 	return nil
 }
@@ -460,6 +474,9 @@ func (m *analyzeModel) clearConfirm() {
 
 func (m *analyzeModel) navigateBack() {
 	switch m.screen {
+	case screenSessionPreview:
+		m.screen = screenSessions
+		return
 	case screenCandidates:
 		if m.activeAssistant == "openclaw" {
 			m.screen = screenOpenClawMenu
@@ -601,13 +618,16 @@ func (m analyzeModel) View() string {
 func (m analyzeModel) renderHeader() string {
 	breadcrumbs := []string{"Analyze"}
 	switch m.screen {
-	case screenOpenClawMenu, screenSessions, screenCandidates:
+	case screenOpenClawMenu, screenSessions, screenSessionPreview, screenCandidates:
 		if m.activeAssistant != "" {
 			breadcrumbs = append(breadcrumbs, displayAssistant(m.activeAssistant))
 		}
 	}
-	if m.screen == screenSessions {
+	if m.screen == screenSessions || m.screen == screenSessionPreview {
 		breadcrumbs = append(breadcrumbs, "Conversations")
+	}
+	if m.screen == screenSessionPreview {
+		breadcrumbs = append(breadcrumbs, "Preview")
 	}
 	if m.screen == screenCandidates {
 		breadcrumbs = append(breadcrumbs, "Items")
@@ -644,6 +664,8 @@ func (m analyzeModel) renderBody() (string, string) {
 		return m.renderOpenClawMenu(), m.renderOpenClawDetail()
 	case screenSessions:
 		return m.renderSessionsList(), m.renderSessionDetail()
+	case screenSessionPreview:
+		return m.renderSessionsList(), m.renderSessionPreview()
 	case screenCandidates:
 		return m.renderCandidateList(), m.renderCandidateDetail()
 	default:
@@ -654,6 +676,8 @@ func (m analyzeModel) renderBody() (string, string) {
 func (m analyzeModel) renderFooter() string {
 	keys := []string{"↑/↓ Navigate", "Enter Select", "q Back"}
 	switch m.screen {
+	case screenSessionPreview:
+		keys = []string{"q Back to conversations"}
 	case screenSessions:
 		keys = append(keys, "d Delete item", "f Filter date", "x Bulk delete", "c Clear filter")
 	case screenCandidates:
@@ -782,6 +806,40 @@ func (m analyzeModel) renderSessionDetail() string {
 	} else {
 		lines = append(lines, m.styles.warn.Render("  Press x to delete all conversations in the current filter."))
 	}
+	return strings.Join(lines, "\n")
+}
+
+func (m analyzeModel) renderSessionPreview() string {
+	if m.previewText == "" {
+		return m.styles.muted.Render("Unable to load preview data.")
+	}
+
+	lines := []string{
+		m.styles.header.Render("Conversation Preview"),
+		"",
+	}
+
+	// Truncate the preview text to fit reasonably well
+	previewLines := strings.Split(m.previewText, "\n")
+	maxLines := m.height - 12 // Leave space for headers, footers
+	if maxLines < 10 {
+		maxLines = 10
+	}
+
+	if len(previewLines) > maxLines {
+		// Just take the tail part
+		lines = append(lines, m.styles.muted.Render(fmt.Sprintf("... (%d truncated lines) ...", len(previewLines)-maxLines)))
+		previewLines = previewLines[len(previewLines)-maxLines:]
+	}
+
+	for _, l := range previewLines {
+		if strings.HasPrefix(l, "== User ==") || strings.HasPrefix(l, "== Assistant ==") || strings.HasPrefix(l, "== System ==") {
+			lines = append(lines, m.styles.accent.Render(strings.TrimSpace(l)))
+		} else {
+			lines = append(lines, l)
+		}
+	}
+
 	return strings.Join(lines, "\n")
 }
 

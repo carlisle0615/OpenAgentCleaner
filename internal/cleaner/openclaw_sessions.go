@@ -3,6 +3,7 @@ package cleaner
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -46,6 +47,18 @@ type openClawSessionFrom struct {
 
 type openClawSessionEvent struct {
 	Timestamp string `json:"timestamp"`
+}
+
+type openClawMessageEvent struct {
+	Type    string `json:"type"`
+	Message struct {
+		Role    string `json:"role"`
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+		ErrorMessage string `json:"errorMessage,omitempty"`
+	} `json:"message"`
 }
 
 func discoverOpenClawSessions() ([]OpenClawSession, error) {
@@ -179,6 +192,62 @@ func scanOpenClawTranscript(path string) (time.Time, int, error) {
 		return time.Time{}, 0, err
 	}
 	return startedAt, lines, nil
+}
+
+func previewOpenClawSession(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	buffer := make([]byte, 0, 64*1024)
+	scanner.Buffer(buffer, 2*1024*1024)
+
+	var messages []string
+	for scanner.Scan() {
+		var event openClawMessageEvent
+		if err := json.Unmarshal(scanner.Bytes(), &event); err == nil && event.Type == "message" {
+			role := event.Message.Role
+			if role == "" {
+				continue
+			}
+
+			var textParts []string
+			if event.Message.ErrorMessage != "" {
+				textParts = append(textParts, "[Error] "+event.Message.ErrorMessage)
+			}
+			for _, c := range event.Message.Content {
+				if c.Type == "text" && strings.TrimSpace(c.Text) != "" {
+					textParts = append(textParts, strings.TrimSpace(c.Text))
+				}
+			}
+
+			content := strings.Join(textParts, "\n")
+			if content != "" {
+				prefix := "User"
+				if role == "assistant" {
+					prefix = "Assistant"
+				} else if role == "system" {
+					prefix = "System"
+				}
+				messages = append(messages, fmt.Sprintf("== %s ==\n%s", prefix, content))
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+	if len(messages) == 0 {
+		return "No text messages found in this conversation.", nil
+	}
+
+	// Keep only the last 4 messages to avoid overwhelming the terminal
+	if len(messages) > 4 {
+		messages = messages[len(messages)-4:]
+	}
+	return strings.Join(messages, "\n\n"), nil
 }
 
 func deleteOpenClawSessions(sessions []OpenClawSession) error {

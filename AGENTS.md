@@ -105,8 +105,10 @@
 
 ## CD Contract
 
-- This repository does not currently define a formal release or deployment pipeline
-- If tag releases, Homebrew distribution, installers, or automated publishing are added later, update this file and the related workflows together
+- Tag pushes matching `v*` trigger `.github/workflows/release.yml`, which runs GoReleaser on `ubuntu-latest`
+- Release packaging publishes macOS archives plus `checksums.txt` for installer and Homebrew consumers
+- Homebrew distribution is published through the separate tap repository `carlisle0615/homebrew-openagentcleaner`
+- Any change to archive names, release assets, installer behavior, or tap publishing must update this file, `.goreleaser.yaml`, `docs/RELEASING.md`, and `scripts/generate-homebrew-formula.sh` together
 
 ## Runbook
 
