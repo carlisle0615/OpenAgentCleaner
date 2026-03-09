@@ -61,6 +61,7 @@ brew install carlisle0615/openagentcleaner/oac
 ```
 
 The release and tap workflow is documented in [docs/RELEASING.md](docs/RELEASING.md).
+The Homebrew tap layout is documented in [docs/HOMEBREW_TAP.md](docs/HOMEBREW_TAP.md).
 
 ## Usage
 
