@@ -4,15 +4,19 @@ Last updated: 2026-03-09
 
 ## What Landed
 
-- Merged PR `#2` into `main` with commit `80fa6d3`, carrying the OpenClaw session preview TUI work and the Linux-safe Bubble Tea smoke-test guard.
-- Published GitHub Release [`v0.1.3`](https://github.com/carlisle0615/OpenAgentCleaner/releases/tag/v0.1.3).
-- Updated the Homebrew tap repository [`carlisle0615/homebrew-openagentcleaner`](https://github.com/carlisle0615/homebrew-openagentcleaner) with `Formula/oac.rb` for `v0.1.3`.
+- Merged PR `#5` into `main` with commit `049f880`, carrying the breaking agent-first cleanup CLI redesign.
+- Published GitHub Release [`v0.2.0`](https://github.com/carlisle0615/OpenAgentCleaner/releases/tag/v0.2.0).
+- Updated the Homebrew tap repository [`carlisle0615/homebrew-openagentcleaner`](https://github.com/carlisle0615/homebrew-openagentcleaner) with `Formula/oac.rb` for `v0.2.0`.
+- Release artifacts now include:
+  - `checksums.txt`
+  - `oac_0.2.0_darwin_arm64.tar.gz`
+  - `oac_0.2.0_darwin_amd64.tar.gz`
 
 ## Validation
 
-- Local: `make fmt`, `make build`, `make test`, `make verify-all`
-- Remote: PR check `build-and-test` passed, then Release workflow run `22840576358` succeeded
+- Local: `make fmt`, `make build`, `make test`
+- Remote: PR check `build-and-test` passed, then Release workflow run `22841356905` succeeded
 
 ## Follow-Up
 
-- If you want Homebrew installs to feel complete, the next meaningful step is to add the tap install command to the main README once you are comfortable treating the tap as stable.
+- The repository still has a small post-release follow-up to merge: regenerated `Formula/oac.rb` plus the formula generator script now restore the MIT license field for future tap refreshes.

@@ -32,6 +32,7 @@ cat >"$output" <<EOF
 class Oac < Formula
   desc "Guided macOS cleaner for leftover AI assistant files"
   homepage "https://github.com/$REPO"
+  license "MIT"
   version "$version"
 
   on_arm do
