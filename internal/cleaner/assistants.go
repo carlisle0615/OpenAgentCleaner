@@ -42,23 +42,8 @@ func discoverCandidates(assistants []string) ([]Candidate, error) {
 }
 
 func discoverOpenClaw(home string) []Candidate {
-	stateRoots := []string{}
-	if explicit := cleanPath(os.Getenv("OPENCLAW_STATE_DIR")); explicit != "." && explicit != "" {
-		stateRoots = append(stateRoots, explicit)
-	} else {
-		stateRoots = append(stateRoots, filepath.Join(home, ".openclaw"))
-	}
-
-	if matches, _ := filepath.Glob(filepath.Join(home, ".openclaw-*")); len(matches) > 0 {
-		for _, match := range matches {
-			if isOpenClawStateRoot(match) {
-				stateRoots = append(stateRoots, match)
-			}
-		}
-	}
-
 	var out []Candidate
-	for _, root := range uniqueStrings(stateRoots) {
+	for _, root := range openClawStateRoots(home) {
 		configPath := filepath.Join(root, "openclaw.json")
 		if explicitConfig := cleanPath(os.Getenv("OPENCLAW_CONFIG_PATH")); explicitConfig != "." && explicitConfig != "" {
 			configPath = explicitConfig
@@ -411,4 +396,23 @@ func isOpenClawStateRoot(path string) bool {
 		}
 	}
 	return false
+}
+
+func openClawStateRoots(home string) []string {
+	stateRoots := []string{}
+	if explicit := cleanPath(os.Getenv("OPENCLAW_STATE_DIR")); explicit != "." && explicit != "" {
+		stateRoots = append(stateRoots, explicit)
+	} else {
+		stateRoots = append(stateRoots, filepath.Join(home, ".openclaw"))
+	}
+
+	if matches, _ := filepath.Glob(filepath.Join(home, ".openclaw-*")); len(matches) > 0 {
+		for _, match := range matches {
+			if isOpenClawStateRoot(match) {
+				stateRoots = append(stateRoots, match)
+			}
+		}
+	}
+
+	return uniqueStrings(stateRoots)
 }

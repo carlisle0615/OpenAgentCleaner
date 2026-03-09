@@ -23,6 +23,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	switch args[0] {
+	case "analyze":
+		return runAnalyze(args[1:], stdout, stderr)
 	case "scan":
 		return runScan(args[1:], stdout, stderr)
 	case "clean":
@@ -49,12 +51,13 @@ func runHomeMenu(stdout, stderr io.Writer) int {
 		ui.banner(appName, "Clean leftover AI assistant files on your Mac without guessing what is safe to remove.")
 		fmt.Fprintf(stdout, "%s First step: run a scan. A scan never deletes anything.\n\n", ui.badgeMuted("Recommended"))
 		fmt.Fprintln(stdout, "1. Scan this Mac")
-		fmt.Fprintln(stdout, "2. Preview cleanup for safe items")
-		fmt.Fprintln(stdout, "3. Remove safe leftovers")
-		fmt.Fprintln(stdout, "4. Guided full cleanup")
-		fmt.Fprintln(stdout, "5. Show command help")
-		fmt.Fprintln(stdout, "6. Quit")
-		fmt.Fprintf(stdout, "\nChoose an option [1-6] (%s): ", cmd+" scan")
+		fmt.Fprintln(stdout, "2. Analyze conversations and leftovers")
+		fmt.Fprintln(stdout, "3. Preview cleanup for safe items")
+		fmt.Fprintln(stdout, "4. Remove safe leftovers")
+		fmt.Fprintln(stdout, "5. Guided full cleanup")
+		fmt.Fprintln(stdout, "6. Show command help")
+		fmt.Fprintln(stdout, "7. Quit")
+		fmt.Fprintf(stdout, "\nChoose an option [1-7] (%s): ", cmd+" scan")
 
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -65,16 +68,18 @@ func runHomeMenu(stdout, stderr io.Writer) int {
 		switch strings.ToLower(strings.TrimSpace(line)) {
 		case "", "1", "scan", "s":
 			return runScan(nil, stdout, stderr)
-		case "2", "preview", "p":
+		case "2", "analyze", "a":
+			return runAnalyze(nil, stdout, stderr)
+		case "3", "preview", "p":
 			return runClean([]string{"--dry-run"}, stdout, stderr)
-		case "3", "clean", "c":
+		case "4", "clean", "c":
 			return runClean(nil, stdout, stderr)
-		case "4", "clean-all", "confirm", "a":
+		case "5", "clean-all", "confirm", "full":
 			return runClean([]string{"--include-confirm"}, stdout, stderr)
-		case "5", "help", "h":
+		case "6", "help", "h":
 			printRootHelp(stdout)
 			fmt.Fprintln(stdout)
-		case "6", "quit", "q", "exit":
+		case "7", "quit", "q", "exit":
 			return 0
 		default:
 			fmt.Fprintf(stderr, "unknown action %q\n\n", strings.TrimSpace(line))
@@ -425,6 +430,8 @@ func printRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "Core commands:")
 	fmt.Fprintf(w, "  %s scan\n", cmd)
 	fmt.Fprintln(w, "  Scan your Mac and show what can be cleaned.")
+	fmt.Fprintf(w, "  %s analyze\n", cmd)
+	fmt.Fprintln(w, "  Browse conversations and leftovers, then delete specific items interactively.")
 	fmt.Fprintf(w, "  %s clean\n", cmd)
 	fmt.Fprintln(w, "  Remove only safe leftovers.")
 	fmt.Fprintf(w, "  %s clean --include-confirm\n", cmd)
@@ -435,6 +442,7 @@ func printRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "Automation examples:")
 	fmt.Fprintf(w, "  %s scan --mode agent --json\n", cmd)
 	fmt.Fprintf(w, "  %s clean --mode agent --yes --json\n", cmd)
+	fmt.Fprintf(w, "  %s analyze --assistant openclaw\n", cmd)
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Safety rules:")
 	fmt.Fprintln(w, "  - `safe` items can be removed directly.")

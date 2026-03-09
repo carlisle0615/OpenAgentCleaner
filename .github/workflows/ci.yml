@@ -20,15 +20,4 @@ jobs:
           go-version-file: go.mod
 
       - name: Format check
-        run: |
-          gofmt -w main.go internal/cleaner/*.go
-          git diff --exit-code
-
-      - name: Build
-        run: make build
-
-      - name: Test
-        run: make test
-
-      - name: Check shell scripts
-        run: sh -n install.sh scripts/install-local.sh scripts/generate-homebrew-formula.sh scripts/uninstall.sh
+        run: make verify-all

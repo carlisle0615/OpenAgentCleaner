@@ -15,9 +15,9 @@ Thanks for contributing to `OpenAgentCleaner`.
 3. Run:
 
 ```bash
-make fmt
-make test
-make build
+make hooks
+make verify-fast
+make verify-all
 ```
 
 4. Update `README.md` if user-facing behavior changes.
@@ -42,3 +42,5 @@ When adding support for another assistant:
 - Prefer explicit reasoning over large path globs.
 - Do not introduce destructive behavior without a confirmation boundary.
 - Include tests when practical; if not, describe the verification gap.
+- `main` is expected to stay protected by the required `build-and-test` CI check.
+- Local hooks are intentionally bypassable with `--no-verify`, but pushes to `main` should normally pass the full verification suite first.
