@@ -14,7 +14,7 @@ Last updated: 2026-03-09
 | Split human and agent CLI docs       | Completed (verified) | `docs/current-plans/readme-human-agent.md`    |
 | Install `oac` and inspect Ollama cleanup candidates | Completed (verified) | `docs/current-plans/install-oac-ollama-check.md` |
 | Redesign CLI for agent-first cleanup | Completed (verified) | `docs/current-plans/agent-first-cli-redesign.md` |
-| Release and Homebrew refresh for agent-first CLI | In progress | `docs/current-plans/release-brew-refresh.md` |
+| Release and Homebrew refresh for agent-first CLI | Completed (verified) | `docs/current-plans/release-brew-refresh.md` |
 | Clarify agent usage in CLI help      | Completed (verified) | `docs/current-plans/cli-help-agent-guidance.md` |
 
 ## Notes

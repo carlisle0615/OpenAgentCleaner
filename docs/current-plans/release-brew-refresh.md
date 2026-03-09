@@ -25,13 +25,39 @@ Push the current staged repository changes through the protected-branch workflow
 
 ## Todo
 
-- [ ] Confirm the release version and inspect current repo/release workflow state
-- [ ] Finish any remaining code/doc alignment needed before release
-- [ ] Run `make fmt`, `make build`, and `make test`
-- [ ] Commit the release-ready state and push it to GitHub
-- [ ] Tag and publish the new release
-- [ ] Generate and sync the updated Homebrew formula
-- [ ] Update plan status and leave a release handoff with final publish state
+- [x] Confirm the release version and inspect current repo/release workflow state
+- [x] Finish any remaining code/doc alignment needed before release
+- [x] Run `make fmt`, `make build`, and `make test`
+- [x] Commit the release-ready state and push it to GitHub
+- [x] Tag and publish the new release
+- [x] Generate and sync the updated Homebrew formula
+- [x] Update plan status and leave a release handoff with final publish state
+
+## Outcome Notes
+
+- Published the breaking agent-first CLI redesign as `v0.2.0`
+- Because `main` is protected, the release commit shipped through PR `#5`, then the tag was pushed from the merged `main` commit
+- GitHub Release workflow run `22841356905` completed successfully and published:
+  - `checksums.txt`
+  - `oac_0.2.0_darwin_arm64.tar.gz`
+  - `oac_0.2.0_darwin_amd64.tar.gz`
+- Updated the tap repository `carlisle0615/homebrew-openagentcleaner` on `main` with `Formula/oac.rb` for `v0.2.0`
+- Regenerated this repository's `Formula/oac.rb` from release checksums and updated `scripts/generate-homebrew-formula.sh` to preserve the MIT license field
+
+## Validation Results
+
+- Local pre-release:
+  - `make fmt`
+  - `make build`
+  - `make test`
+- Branch CI:
+  - PR `#5` check `build-and-test` passed
+- Release:
+  - Workflow run `22841356905` succeeded for tag `v0.2.0`
+
+## Remaining Work
+
+- Commit the post-release formula/script/doc updates in this repository and merge them back to `main`
 
 ## Validation Steps
 
