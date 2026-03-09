@@ -20,8 +20,8 @@ Last updated: 2026-03-09
 
 - `scan -> classify -> confirm -> delete` is the core safety flow and must not skip classification or confirmation boundaries
 - `manual` items are for visibility and human review only; they must never be auto-deleted by default
-- `confirm` items may only become deletion candidates when `--include-confirm` is explicitly passed
-- Non-interactive deletion must require `--yes` or `--dry-run`
+- `confirm` items may only become deletion candidates when an explicit selector such as `--id`, `--kind`, or `--safety confirm` targets them
+- Non-interactive deletion must require both an explicit selector and `--yes` or `--dry-run`
 - When rule confidence is low, prefer downgrading to `confirm` or `manual` instead of upgrading to `safe`
 
 ## Planning and Handoff Constraints

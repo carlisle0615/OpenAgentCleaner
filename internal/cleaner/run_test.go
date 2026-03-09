@@ -31,6 +31,18 @@ func TestRunDispatch(t *testing.T) {
 		if code := Run([]string{"--help"}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "Core commands:") {
 			t.Fatalf("Run(help) = %d, stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 		}
+		for _, want := range []string{
+			"Agent-first workflow:",
+			"scan --mode agent --json",
+			"clean --safety safe --dry-run --mode agent --json",
+			"clean --id <candidate-id> --yes --mode agent --json",
+			"analyze",
+			"Human workflow:",
+		} {
+			if !strings.Contains(stdout.String(), want) {
+				t.Fatalf("Run(help) missing %q in stdout=%q", want, stdout.String())
+			}
+		}
 
 		stdout.Reset()
 		stderr.Reset()
@@ -40,7 +52,7 @@ func TestRunDispatch(t *testing.T) {
 
 		stdout.Reset()
 		stderr.Reset()
-		if code := Run([]string{"clean", "--mode", "agent", "--dry-run", "--json"}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), `"operation": "clean"`) {
+		if code := Run([]string{"clean", "--mode", "agent", "--safety", "safe", "--dry-run", "--json"}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), `"operation": "clean"`) {
 			t.Fatalf("Run(clean dry-run) = %d, stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 		}
 
@@ -70,7 +82,7 @@ func TestRunHomeMenu(t *testing.T) {
 		if code := runHomeMenu(&stdout, &stderr); code != 0 {
 			t.Fatalf("runHomeMenu(help->quit) = %d", code)
 		}
-		if !strings.Contains(stdout.String(), "Show command help") || !strings.Contains(stdout.String(), "Core commands:") {
+		if !strings.Contains(stdout.String(), "Show command help") || !strings.Contains(stdout.String(), "Agent-first workflow:") {
 			t.Fatalf("runHomeMenu output = %q", stdout.String())
 		}
 	})
@@ -120,7 +132,7 @@ func TestRunScanAndRunCleanValidation(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := runClean([]string{"--mode", "agent"}, &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "--yes or --dry-run") {
+	if code := runClean([]string{"--mode", "agent"}, &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "explicit selector") {
 		t.Fatalf("runClean noninteractive = %d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 
@@ -162,6 +174,7 @@ func TestScanAndCleanReport(t *testing.T) {
 	report, err = cleanReport(options{
 		Assistants: []string{"ollama"},
 		Mode:       "agent",
+		Safeties:   []Safety{SafetySafe},
 		DryRun:     true,
 	}, &bytes.Buffer{}, &bytes.Buffer{})
 	if err != nil {
@@ -174,6 +187,7 @@ func TestScanAndCleanReport(t *testing.T) {
 	report, err = cleanReport(options{
 		Assistants: []string{"ollama"},
 		Mode:       "agent",
+		Safeties:   []Safety{SafetySafe},
 		Yes:        true,
 	}, &bytes.Buffer{}, &bytes.Buffer{})
 	if err != nil {
@@ -192,14 +206,14 @@ func TestScanAndCleanReport(t *testing.T) {
 		t.Fatal("safePath should be deleted")
 	}
 	if !pathExists(confirmPath) {
-		t.Fatal("confirmPath should remain because include-confirm=false")
+		t.Fatal("confirmPath should remain because it was not explicitly targeted")
 	}
 
 	report, err = cleanReport(options{
-		Assistants:     []string{"ollama"},
-		Mode:           "agent",
-		IncludeConfirm: true,
-		Yes:            true,
+		Assistants: []string{"ollama"},
+		Mode:       "agent",
+		Kinds:      []string{"config"},
+		Yes:        true,
 	}, &bytes.Buffer{}, &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("cleanReport(delete confirm) err = %v", err)
@@ -224,51 +238,58 @@ func TestScanAndCleanReport(t *testing.T) {
 
 func TestSelectionConfirmationAndDeleteHelpers(t *testing.T) {
 	candidates := []Candidate{
-		{Path: "/tmp/a", Safety: SafetySafe, SizeBytes: 10, Kind: "logs"},
-		{Path: "/tmp/b", Safety: SafetyConfirm, SizeBytes: 20, Kind: "config"},
-		{Path: "/tmp/c", Safety: SafetyManual, SizeBytes: 30, Kind: "workspace"},
+		{ID: candidateID("ollama", "logs", "/tmp/a"), Assistant: "ollama", Path: "/tmp/a", Safety: SafetySafe, SizeBytes: 10, Kind: "logs", Deletable: true},
+		{ID: candidateID("ollama", "config", "/tmp/b"), Assistant: "ollama", Path: "/tmp/b", Safety: SafetyConfirm, SizeBytes: 20, Kind: "config", Deletable: true, RequiresConfirmation: true},
+		{ID: candidateID("openclaw", "workspace", "/tmp/c"), Assistant: "openclaw", Path: "/tmp/c", Safety: SafetyManual, SizeBytes: 30, Kind: "workspace"},
 	}
-	eligible := []int{0, 1}
-
-	if got := eligibleCandidates(candidates, false); len(got) != 1 || got[0] != 0 {
-		t.Fatalf("eligibleCandidates(false) = %v", got)
+	eligible, explicit, err := selectCleanCandidates(candidates, options{Safeties: []Safety{SafetySafe}})
+	if err != nil || !explicit || len(eligible) != 1 || eligible[0] != 0 {
+		t.Fatalf("selectCleanCandidates(safe) = %v, %v, %v", eligible, explicit, err)
 	}
-	if got := eligibleCandidates(candidates, true); len(got) != 2 {
-		t.Fatalf("eligibleCandidates(true) = %v", got)
+	eligible, explicit, err = selectCleanCandidates(candidates, options{})
+	if err != nil || explicit || len(eligible) != 2 {
+		t.Fatalf("selectCleanCandidates(default human) = %v, %v, %v", eligible, explicit, err)
+	}
+	eligible, explicit, err = selectCleanCandidates(candidates, options{CandidateIDs: []string{candidates[1].ID}})
+	if err != nil || !explicit || len(eligible) != 1 || eligible[0] != 1 {
+		t.Fatalf("selectCleanCandidates(id) = %v, %v, %v", eligible, explicit, err)
+	}
+	if _, _, err := selectCleanCandidates(candidates, options{CandidateIDs: []string{"missing"}}); err == nil {
+		t.Fatal("selectCleanCandidates(missing id) should fail")
 	}
 
 	withFakeStdin(t, "\n", func() {
-		got, err := promptSelection(&bytes.Buffer{}, &bytes.Buffer{}, candidates, eligible, true)
+		got, err := promptSelection(&bytes.Buffer{}, &bytes.Buffer{}, candidates, []int{0, 1}, false)
 		if err != nil || len(got) != 1 || got[0] != 0 {
 			t.Fatalf("promptSelection(default safe) = %v, %v", got, err)
 		}
 	})
 	withFakeStdin(t, "safe\n", func() {
-		got, err := promptSelection(&bytes.Buffer{}, &bytes.Buffer{}, candidates, eligible, true)
+		got, err := promptSelection(&bytes.Buffer{}, &bytes.Buffer{}, candidates, []int{0, 1}, false)
 		if err != nil || len(got) != 1 || got[0] != 0 {
 			t.Fatalf("promptSelection(safe) = %v, %v", got, err)
 		}
 	})
 	withFakeStdin(t, "none\n", func() {
-		got, err := promptSelection(&bytes.Buffer{}, &bytes.Buffer{}, candidates, eligible, true)
+		got, err := promptSelection(&bytes.Buffer{}, &bytes.Buffer{}, candidates, []int{0, 1}, false)
 		if err != nil || got != nil {
 			t.Fatalf("promptSelection(none) = %v, %v", got, err)
 		}
 	})
 	withFakeStdin(t, "all\n", func() {
-		got, err := promptSelection(&bytes.Buffer{}, &bytes.Buffer{}, candidates, eligible, true)
+		got, err := promptSelection(&bytes.Buffer{}, &bytes.Buffer{}, candidates, []int{0, 1}, true)
 		if err != nil || len(got) != 2 {
 			t.Fatalf("promptSelection(all) = %v, %v", got, err)
 		}
 	})
 	withFakeStdin(t, "2,1\n", func() {
-		got, err := promptSelection(&bytes.Buffer{}, &bytes.Buffer{}, candidates, eligible, true)
+		got, err := promptSelection(&bytes.Buffer{}, &bytes.Buffer{}, candidates, []int{0, 1}, true)
 		if err != nil || len(got) != 2 || got[0] != 1 || got[1] != 0 {
 			t.Fatalf("promptSelection(explicit) = %v, %v", got, err)
 		}
 	})
 	withFakeStdin(t, "9\n", func() {
-		if _, err := promptSelection(&bytes.Buffer{}, &bytes.Buffer{}, candidates, eligible, true); err == nil {
+		if _, err := promptSelection(&bytes.Buffer{}, &bytes.Buffer{}, candidates, []int{0, 1}, true); err == nil {
 			t.Fatal("promptSelection(invalid) should fail")
 		}
 	})
