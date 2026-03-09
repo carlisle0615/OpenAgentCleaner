@@ -29,3 +29,6 @@ jobs:
 
       - name: Test
         run: make test
+
+      - name: Check shell scripts
+        run: sh -n install.sh scripts/install-local.sh scripts/generate-homebrew-formula.sh scripts/uninstall.sh

@@ -279,7 +279,7 @@ func promptSelection(stdout, stderr io.Writer, candidates []Candidate, eligible 
 	ui.section("Choose what to remove", "Nothing will be deleted until you confirm.")
 	for i, idx := range eligible {
 		candidate := candidates[idx]
-		fmt.Fprintf(stdout, "  [%d] %-16s %-10s %8s  %s\n", i+1, displayKind(candidate.Kind), string(candidate.Safety), formatBytes(candidate.SizeBytes), candidate.Path)
+		fmt.Fprintf(stdout, "  [%d] %-18s %-10s %8s  %s\n", i+1, displayKind(candidate.Kind), displaySafety(candidate.Safety), formatBytes(candidate.SizeBytes), candidate.Path)
 	}
 
 	fmt.Fprintln(stdout)
@@ -353,7 +353,7 @@ func confirmDeletion(stdout, stderr io.Writer, candidates []Candidate, selected 
 	ui.section("Final confirmation", "These files will be permanently removed from this Mac.")
 	for _, idx := range selectedIndexes {
 		candidate := candidates[idx]
-		fmt.Fprintf(stdout, "  - %-16s %-10s %8s  %s\n", displayKind(candidate.Kind), string(candidate.Safety), formatBytes(candidate.SizeBytes), candidate.Path)
+		fmt.Fprintf(stdout, "  - %-18s %-10s %8s  %s\n", displayKind(candidate.Kind), displaySafety(candidate.Safety), formatBytes(candidate.SizeBytes), candidate.Path)
 	}
 	fmt.Fprintln(stdout)
 	fmt.Fprintf(stdout, "This will remove %d item(s) and reclaim about %s.\n", count, formatBytes(bytes))

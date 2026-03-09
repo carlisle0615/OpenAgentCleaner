@@ -28,6 +28,9 @@ func printHumanReport(w io.Writer, report Report, isClean bool) {
 	if isClean && report.DryRun {
 		title = "Cleanup preview"
 		subtitle = "This is a dry run. Review the plan before deleting anything."
+	} else if isClean && report.Summary.SelectedCount == 0 && report.Summary.DeletedCount == 0 {
+		title = "Nothing removed"
+		subtitle = "No files were selected, or the cleanup was cancelled."
 	} else if isClean {
 		title = "Cleanup finished"
 		subtitle = "Review the results below."
@@ -113,6 +116,12 @@ func printNextSteps(w io.Writer, ui humanUI, report Report, safeStats, confirmSt
 	case !isClean && confirmStats.Count > 0:
 		fmt.Fprintf(w, "  1. Review the items above carefully.\n")
 		fmt.Fprintf(w, "  2. Run `%s clean --include-confirm --dry-run` to preview a fuller cleanup.\n", cmd)
+	case isClean && report.Summary.SelectedCount == 0 && report.Summary.DeletedCount == 0:
+		fmt.Fprintf(w, "  1. No changes were applied.\n")
+		fmt.Fprintf(w, "  2. Run `%s clean --dry-run` if you want a preview first.\n", cmd)
+		if confirmStats.Count > 0 {
+			fmt.Fprintf(w, "  3. Use `%s clean --include-confirm` only when you intend to remove saved models, sessions, or settings.\n", cmd)
+		}
 	case isClean && report.DryRun:
 		applyCommand := cmd + " clean"
 		if selectedHasConfirm(report) {
@@ -304,13 +313,6 @@ func titleize(raw string) string {
 		parts[i] = strings.ToUpper(parts[i][:1]) + strings.ToLower(parts[i][1:])
 	}
 	return strings.Join(parts, " ")
-}
-
-func maxInt64(a, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 func selectedHasConfirm(report Report) bool {

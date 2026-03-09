@@ -20,6 +20,7 @@ Current platform support:
 
 - Human-friendly mode: interactive selection and confirmation before deletion.
 - Agent-friendly mode: structured JSON output and non-interactive execution with `--yes`.
+- Guided UX: a home screen, cleanup previews, and plain-language safety cues for non-technical users.
 - Explicit safety classes:
   - `safe`: logs, caches, and disposable runtime leftovers.
   - `confirm`: persistent state that should only be removed intentionally.
@@ -27,7 +28,13 @@ Current platform support:
 
 ## Installation
 
-Install to `~/.local/bin/oac`:
+Install the latest release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/carlisle0615/OpenAgentCleaner/main/install.sh | bash
+```
+
+Install to `~/.local/bin/oac` from the local source tree:
 
 ```bash
 make install
@@ -47,12 +54,26 @@ make uninstall
 
 If `~/.local/bin` is not on your `PATH`, add it before running `oac`.
 
+Homebrew is designed to use a separate tap repository. The planned install command is:
+
+```bash
+brew install carlisle0615/openagentcleaner/oac
+```
+
+The release and tap workflow is documented in [docs/RELEASING.md](docs/RELEASING.md).
+
 ## Usage
 
 Launch the interactive home menu:
 
 ```bash
 oac
+```
+
+Show the installed version:
+
+```bash
+oac version
 ```
 
 Scan only:

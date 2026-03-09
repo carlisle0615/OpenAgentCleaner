@@ -5,9 +5,11 @@ BINARY="${BINARY:-oac}"
 PREFIX="${PREFIX:-$HOME/.local}"
 BINDIR="${BINDIR:-$PREFIX/bin}"
 TARGET="$BINDIR/$BINARY"
+VERSION="${VERSION:-dev}"
+LDFLAGS="${LDFLAGS:-"-s -w -X github.com/carlisle0615/OpenAgentCleaner/internal/cleaner.Version=$VERSION"}"
 
 mkdir -p "$BINDIR"
-go build -o "$TARGET" .
+go build -ldflags "$LDFLAGS" -o "$TARGET" .
 chmod 755 "$TARGET"
 
 printf 'Installed %s\n' "$TARGET"

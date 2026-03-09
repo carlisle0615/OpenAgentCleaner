@@ -12,29 +12,33 @@ Last updated: 2026-03-09
 1. Code and tests
 2. `README.md`
 3. `go.mod`, `Makefile`
-4. `.github/workflows/ci.yml`
+4. `.github/workflows/ci.yml`, `.github/workflows/release.yml`
 
 ## Repository Overview
 
 - `main.go`
   - Process entry point; only forwards into `internal/cleaner.Run`
 - `internal/cleaner/`
-  - `run.go`: command dispatch, flag parsing, interactive home menu, main `scan` / `clean` flow
+  - `run.go`: command dispatch, flag parsing, interactive home menu, version/help output, main `scan` / `clean` flow
   - `assistants.go`: assistant-specific discovery rules, path classification, deletion eligibility boundaries
   - `types.go`: core data structures such as `Candidate`, `Report`, `Summary`, plus mode normalization helpers
-  - `output.go`: human-readable report output
+  - `output.go`: guided human-readable report output
+  - `ui.go`: terminal presentation helpers for badges, sections, and color support
 - `scripts/`
-  - `install.sh`, `uninstall.sh`: install and uninstall helpers
-- `tests/regression/`
-  - `run_ci.sh`: CI-safe regression entry point, runs `ci/test_*.sh` in order
-  - `run_manual.sh`: manual regression entry point, runs `manual/test_*.sh` in order
-  - `ci/`, `manual/`: regression script directories
+  - `install-local.sh`: local source-tree installer used by `make install`
+  - `generate-homebrew-formula.sh`: generates `Formula/oac.rb` from release checksums
+  - `uninstall.sh`: uninstall helper
+- `install.sh`
+  - release installer that downloads the latest GitHub Release archive
+- `.goreleaser.yaml`
+  - release packaging definition for macOS archives and checksums
 - `.github/workflows/ci.yml`
-  - Current CI workflow for format check, build, and tests
+  - CI workflow for format check, build, and tests
+- `.github/workflows/release.yml`
+  - tag-triggered GitHub Release workflow using GoReleaser
 - `docs/`
-  - `current-plan.md`: active task index
-  - `current-plans/`: one plan file per task, supports parallel work
-  - `handoffs/`: handoff summaries, only for information a future maintainer actually needs
+  - `RELEASING.md`: release, installer, and Homebrew tap notes
+  - `repo-map.md`: this file
 
 ## Key Entry Points
 
@@ -42,10 +46,10 @@ Last updated: 2026-03-09
 - Command dispatch: `internal/cleaner/run.go`
 - Discovery rules: `internal/cleaner/assistants.go`
 - Report structures: `internal/cleaner/types.go`
-- User-facing output: `internal/cleaner/output.go`
+- User-facing output: `internal/cleaner/output.go`, `internal/cleaner/ui.go`
 - Build and test entry points: `Makefile`
-- Regression entry point: `tests/regression/run_ci.sh`
-- CI definition: `.github/workflows/ci.yml`
+- Release packaging: `.goreleaser.yaml`
+- CI and release definitions: `.github/workflows/ci.yml`, `.github/workflows/release.yml`
 
 ## Main Flow
 
@@ -62,7 +66,7 @@ Last updated: 2026-03-09
 - `run.go` owns CLI interaction and flow orchestration, not assistant-specific path knowledge
 - `assistants.go` is the main source of truth for deletion boundaries and platform path knowledge
 - `types.go` owns shared structures, mode handling, and small utilities
-- `output.go` is presentation only and must not change deletion decisions
+- `output.go` and `ui.go` are presentation only and must not change deletion decisions
 
 ## Common Cross-File Changes
 
@@ -72,13 +76,13 @@ Last updated: 2026-03-09
   - Update `README.md` and the safety classification documentation
 - Change CLI flags or command behavior:
   - Start in `internal/cleaner/run.go`
-  - Then check `README.md`, CI, and related tests
+  - Then check `README.md`, `docs/RELEASING.md`, CI, and related tests
 - Change output formatting or JSON structure:
-  - Update `internal/cleaner/output.go` or `internal/cleaner/types.go`
+  - Update `internal/cleaner/output.go`, `internal/cleaner/ui.go`, or `internal/cleaner/types.go`
   - Evaluate downstream agent-mode consumers for breakage
-- Add new regression or diagnostic scripts:
-  - Update `tests/regression/*` or `scripts/*`
-  - Sync `AGENTS.md` or `docs/invariants.md` if the workflow contract changes
+- Change installer or release packaging:
+  - Update `install.sh`, `.goreleaser.yaml`, `.github/workflows/release.yml`, and `docs/RELEASING.md`
+  - Update `scripts/generate-homebrew-formula.sh` if archive names or tap conventions change
 
 ## Fragile Areas / Cautions
 
@@ -86,14 +90,15 @@ Last updated: 2026-03-09
 - `manual` is the last safety boundary and should not be downgraded just because a path looks cache-like
 - The non-interactive behavior in `cleanReport` depends on `--yes` / `--dry-run`; this is a core agent-mode guardrail
 - CI runs on `macos-latest`, but `go test ./...` should remain independent from local machine state whenever possible
+- The release installer and Homebrew formula generator assume archive names shaped like `oac_<version>_darwin_<arch>.tar.gz`
 - `gofmt -w ... && git diff --exit-code` modifies files before validating cleanliness, so any format target changes must stay in sync across CI and `Makefile`
 
 ## Suggested Reading Order
 
 1. `AGENTS.md`
 2. `docs/repo-map.md`
-3. `docs/invariants.md`
-4. `docs/current-plan.md`
-5. The relevant `docs/current-plans/*.md`
-6. `README.md`
-7. `internal/cleaner/run.go` and `internal/cleaner/assistants.go`
+3. `README.md`
+4. `docs/RELEASING.md`
+5. `internal/cleaner/run.go`
+6. `internal/cleaner/assistants.go`
+7. `internal/cleaner/output.go`

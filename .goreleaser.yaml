@@ -1,0 +1,44 @@
+version: 2
+
+project_name: oac
+
+before:
+  hooks:
+    - go test ./...
+
+builds:
+  - id: oac
+    main: .
+    binary: oac
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/carlisle0615/OpenAgentCleaner/internal/cleaner.Version={{ .Version }}
+
+archives:
+  - id: release-archive
+    ids:
+      - oac
+    formats:
+      - tar.gz
+    name_template: '{{ .ProjectName }}_{{ trimPrefix "v" .Version }}_{{ .Os }}_{{ .Arch }}'
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+release:
+  prerelease: auto
+
+changelog:
+  sort: asc
