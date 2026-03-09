@@ -2,6 +2,7 @@ package cleaner
 
 import (
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -391,6 +392,10 @@ func TestAnalyzeRenderingHelpers(t *testing.T) {
 }
 
 func TestRunAnalyzeTUIQuit(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Bubble Tea quit smoke test is only reliable on macOS in this project")
+	}
+
 	home := setTestHome(t)
 	writeTestFile(t, filepath.Join(home, ".ollama", "logs", "server.log"), "log")
 

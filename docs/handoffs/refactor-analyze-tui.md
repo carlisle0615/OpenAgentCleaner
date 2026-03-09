@@ -13,6 +13,8 @@
   - 对过长的 Session Label 执行了截断 `trimForDisplay(str, 22)` 处理，以此消灭了因终端窄宽或长 ID 名字引发的布局彻底崩散（挤出多行的 Bug）。
   - 所有 List 使用 `❯` 作为激活高亮，仅改变前景强调色，消除长短不一的色块。
   - Header 与 Footer 转变为简单统一的暗色提示序列和面包屑，整体对齐在代码或详情上。
+- **对话详情预览层（Session Preview）**：
+  - 加载了 `openclaw_sessions.go` 解析 `.jsonl` 时抽取 `message` 内容的提取逻辑（`previewOpenClawSession`），支持在列表按 `Enter` 切入完整的对话预览页面查阅最近几条的互动内容，防止误删会话。
 
 ## 验证结论
 

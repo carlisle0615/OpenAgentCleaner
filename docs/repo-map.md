@@ -102,7 +102,7 @@ Last updated: 2026-03-09
 - `manual` is the last safety boundary and should not be downgraded just because a path looks cache-like
 - The non-interactive behavior in `cleanReport` depends on `--yes` / `--dry-run`; this is a core agent-mode guardrail
 - `openclaw_sessions.go` edits `sessions.json` after transcript deletions; mismatches there can create orphaned metadata or confusing UX
-- CI runs on `macos-latest`, but `go test ./...` should remain independent from local machine state whenever possible
+- CI runs on `macos-latest`, while the release workflow runs GoReleaser plus `go test ./...` on `ubuntu-latest`; tests must stay cross-platform unless they are explicitly guarded
 - The release installer and Homebrew formula generator assume archive names shaped like `oac_<version>_darwin_<arch>.tar.gz`
 - `gofmt -w ... && git diff --exit-code` modifies files before validating cleanliness, so any format target changes must stay in sync across CI and `Makefile`
 
