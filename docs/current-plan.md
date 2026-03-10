@@ -6,6 +6,7 @@ Last updated: 2026-03-10
 
 | Topic                                | Status               | Plan File                                     |
 | ------------------------------------ | -------------------- | --------------------------------------------- |
+| Push local `main` commit and sync with remote main | In Progress | `docs/current-plans/git-push-main-sync.md` |
 | Add `GEMINI.md` symlink              | Completed (verified) | `docs/current-plans/gemini-md-symlink.md`     |
 | Collaboration doc baseline migration | Completed (verified) | `docs/current-plans/context-doc-bootstrap.md` |
 | Refactor Analyze TUI                 | Completed (verified) | `docs/current-plans/refactor-analyze-tui.md`  |
