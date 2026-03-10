@@ -1,9 +1,9 @@
-# Task Plan: Install `oac` and inspect Ollama cleanup candidates
+# Task Plan: Install `oac` and inspect local cleanup candidates
 
 ## Goal
 
-- Install the `oac` CLI on the local machine using the public project distribution path
-- Run a non-destructive scan focused on local cleanup guidance and determine whether Ollama has removable items
+- Verify the public install path for the `oac` CLI on the local machine
+- Run non-destructive local cleanup scans and inspect what the tool recommends on this machine
 - Report findings to the user before any deletion step
 
 ## Touched Files
@@ -13,8 +13,8 @@
 
 ## Todo
 
-- [x] Install `oac` and confirm the binary is runnable from the shell
-- [x] Run a non-destructive `oac` scan and capture Ollama-related findings
+- [x] Verify install path behavior and confirm the binary is runnable from the shell
+- [x] Run non-destructive `oac` scan commands for general local cleanup findings
 - [x] Summarize removable vs. manual-review items for the user without deleting anything
 - [x] Update this plan file with validation status and completion notes
 - [x] Update `docs/current-plan.md` to mark the task complete when finished
@@ -22,7 +22,8 @@
 ## Validation
 
 - Verify `oac --help` or equivalent command exits successfully
-- Verify the scan command exits successfully and produces Ollama-related results or an explicit no-findings result
+- Verify the install command path or existing binary state can be confirmed from the shell
+- Verify one or more scan commands exit successfully and produce cleanup results or an explicit no-findings result
 
 ## Doc Sync
 
@@ -31,25 +32,30 @@
 
 ## Outcome Notes
 
-- `oac` was already installed at `/Users/bytedance/.local/bin/oac`
-- Verified CLI health with `oac --version` and `oac --help`; installed version is `0.1.3`
-- Ran `oac scan --assistants ollama --mode agent --json` successfully
-- Scan found 7 Ollama-related candidates totaling `19006424703` bytes
-- Safe cleanup candidates:
-  - `/Users/bytedance/.ollama/logs` (`17786` bytes)
-  - `/Users/bytedance/Library/WebKit/com.electron.ollama` (`618920` bytes)
-- Confirm-only candidates:
-  - `/Users/bytedance/.ollama/models` (`19005552627` bytes)
-  - `/Users/bytedance/Library/Application Support/Ollama` (`234852` bytes)
-  - `/usr/local/bin/ollama` (`50` bytes)
-- Manual-review candidates:
+- Follow-up task completed on 2026-03-09 for broader local cleanup verification
+- Existing binary was present at `/Users/bytedance/.local/bin/oac`; install script upgraded it from `0.1.3` to `0.2.0`
+- Verified CLI health with `oac --help`
+- Ran `oac scan --mode agent --json` successfully
+- Ran `oac clean --safety safe --dry-run --mode agent --json` successfully
+- Scan found 13 candidates totaling `81897182` bytes across Ollama and OpenClaw residues
+- `safe` candidates: 5 items, `6973421` bytes
+  - `/Users/bytedance/.ollama/logs`
+  - `/Users/bytedance/Library/WebKit/com.electron.ollama`
+  - `/Users/bytedance/.openclaw/logs`
+  - `/tmp/openclaw/openclaw-2026-03-06.log`
+  - `/tmp/openclaw/openclaw-2026-03-07.log`
+- `confirm` candidates: 5 items, `240166` bytes
+  - `/Users/bytedance/Library/Application Support/Ollama`
+  - `/usr/local/bin/ollama`
+  - `/Users/bytedance/.openclaw/agents`
+  - `/Users/bytedance/.openclaw/openclaw.json`
+  - `/Users/bytedance/Library/LaunchAgents/ai.openclaw.gateway.plist`
+- `manual` candidates: 3 items, `74683595` bytes
   - `/Users/bytedance/.ollama/id_ed25519`
   - `/Users/bytedance/.ollama/id_ed25519.pub`
-- Local manifest inspection shows two installed models:
-  - `registry.ollama.ai/library/gpt-oss/20b` layer size `13780154624` bytes
-  - `registry.ollama.ai/library/deepseek-r1/8b` layer size `5225373760` bytes
+  - `/Users/bytedance/.openclaw/workspace`
 
 ## Unverified
 
 - Did not execute deletion commands
-- Did not verify whether the user still actively needs the two installed models or Ollama application state
+- Did not verify whether the user still needs Ollama installation state, OpenClaw sessions/config, or the OpenClaw workspace contents

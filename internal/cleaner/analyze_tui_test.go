@@ -10,6 +10,19 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+func testConversationSession(id, title, path string, startedAt time.Time) ConversationSession {
+	return ConversationSession{
+		Assistant:    "openclaw",
+		ID:           id,
+		Title:        title,
+		Path:         path,
+		StartedAt:    startedAt,
+		UpdatedAt:    startedAt,
+		Deletable:    true,
+		ProviderData: OpenClawSession{SessionID: id, DisplayName: title, TranscriptPath: path, StartedAt: startedAt},
+	}
+}
+
 func TestNewAnalyzeModelAndNavigation(t *testing.T) {
 	home := setTestHome(t)
 	openclawRoot := filepath.Join(home, ".openclaw")
@@ -37,11 +50,11 @@ func TestNewAnalyzeModelAndNavigation(t *testing.T) {
 	if err := model.activateSelection(); err != nil {
 		t.Fatalf("activateSelection(assistant) err = %v", err)
 	}
-	if model.screen != screenOpenClawMenu {
+	if model.screen != screenAssistantMenu {
 		t.Fatalf("screen after select = %v", model.screen)
 	}
 
-	model.openclawIndex = 1
+	model.assistantMenuIndex = 1
 	if err := model.activateSelection(); err != nil {
 		t.Fatalf("activateSelection(openclaw menu) err = %v", err)
 	}
@@ -50,7 +63,7 @@ func TestNewAnalyzeModelAndNavigation(t *testing.T) {
 	}
 
 	model.navigateBack()
-	if model.screen != screenOpenClawMenu {
+	if model.screen != screenAssistantMenu {
 		t.Fatalf("navigateBack() = %v", model.screen)
 	}
 	model.navigateBack()
@@ -78,11 +91,12 @@ func TestNewAnalyzeModelAndNavigation(t *testing.T) {
 
 func TestAnalyzeModelKeyHandlingAndDialogs(t *testing.T) {
 	model := analyzeModel{
-		screen:        screenSessions,
-		sessions:      []OpenClawSession{{SessionID: "a", DisplayName: "A", TranscriptPath: "/tmp/a", StartedAt: time.Unix(1, 0)}},
-		candidates:    []Candidate{{Path: "/tmp/a", Kind: "logs", Safety: SafetySafe, Reason: "r"}},
-		styles:        newAnalyzeStyles(),
-		sessionBefore: time.Time{},
+		screen:          screenSessions,
+		activeAssistant: "openclaw",
+		sessions:        []ConversationSession{testConversationSession("a", "A", "/tmp/a", time.Unix(1, 0))},
+		candidates:      []Candidate{{Path: "/tmp/a", Kind: "logs", Safety: SafetySafe, Reason: "r"}},
+		styles:          newAnalyzeStyles(),
+		sessionBefore:   time.Time{},
 	}
 
 	next, cmd := model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
@@ -146,11 +160,12 @@ func TestAnalyzeModelKeyHandlingAndDialogs(t *testing.T) {
 	}
 
 	model = analyzeModel{
-		screen:     screenSessions,
-		styles:     newAnalyzeStyles(),
-		sessions:   []OpenClawSession{{SessionID: "a", DisplayName: "A", TranscriptPath: "/tmp/a", StartedAt: time.Unix(1, 0)}},
-		candidates: []Candidate{{Path: "/tmp/a", Kind: "logs", Safety: SafetySafe, Reason: "r"}},
-		summaries:  []assistantSummary{{Assistant: "openclaw"}},
+		screen:          screenSessions,
+		activeAssistant: "openclaw",
+		styles:          newAnalyzeStyles(),
+		sessions:        []ConversationSession{testConversationSession("a", "A", "/tmp/a", time.Unix(1, 0))},
+		candidates:      []Candidate{{Path: "/tmp/a", Kind: "logs", Safety: SafetySafe, Reason: "r"}},
+		summaries:       []assistantSummary{{Assistant: "openclaw"}},
 	}
 	nextModel, cmd = model.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
 	if cmd != nil {
@@ -174,15 +189,15 @@ func TestAnalyzeModelKeyHandlingAndDialogs(t *testing.T) {
 		t.Fatalf("handleKey(c) = %#v", nextModel)
 	}
 
-	model = analyzeModel{screen: screenOpenClawMenu, styles: newAnalyzeStyles(), assistants: []string{"openclaw"}}
+	model = analyzeModel{screen: screenAssistantMenu, styles: newAnalyzeStyles(), assistants: []string{"openclaw"}}
 	nextModel, cmd = model.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
 	if cmd == nil {
 		t.Fatal("handleKey(esc at root) should quit")
 	}
 
-	model = analyzeModel{screen: screenAssistants, summaries: []assistantSummary{{Assistant: "openclaw"}}, styles: newAnalyzeStyles()}
+	model = analyzeModel{screen: screenAssistants, summaries: []assistantSummary{{Assistant: "openclaw", LeftoverCount: 1}}, styles: newAnalyzeStyles()}
 	nextModel, _ = model.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
-	if nextModel.screen != screenOpenClawMenu {
+	if nextModel.screen != screenAssistantMenu {
 		t.Fatalf("handleKey(enter) = %#v", nextModel)
 	}
 }
@@ -211,9 +226,23 @@ func TestAnalyzeDeleteFlowsAndReloads(t *testing.T) {
 	if len(model.sessions) != 2 {
 		t.Fatalf("reloadSessions() = %#v", model.sessions)
 	}
+	if model.previewText != "" || model.previewSessionID != "" {
+		t.Fatal("reloadSessions() should not preload session preview")
+	}
 	if len(model.sessionsSource()) != 2 {
 		t.Fatalf("sessionsSource() should return sessions")
 	}
+
+	if err := model.activateSelection(); err != nil {
+		t.Fatalf("activateSelection(session preview) err = %v", err)
+	}
+	if model.screen != screenSessionPreview {
+		t.Fatalf("activateSelection(session preview) screen = %v", model.screen)
+	}
+	if model.previewText == "" || model.previewSessionID == "" {
+		t.Fatal("activateSelection(session preview) should load preview on demand")
+	}
+	model.navigateBack()
 
 	if err := model.prepareDeleteSelected(); err != nil {
 		t.Fatalf("prepareDeleteSelected(session) err = %v", err)
@@ -224,7 +253,7 @@ func TestAnalyzeDeleteFlowsAndReloads(t *testing.T) {
 	if err := model.executeConfirm(); err != nil {
 		t.Fatalf("executeConfirm(session) err = %v", err)
 	}
-	if pathExists(model.confirmSession.TranscriptPath) {
+	if pathExists(transcriptNew) {
 		t.Fatal("session transcript should be deleted")
 	}
 
@@ -268,7 +297,7 @@ func TestAnalyzeDeleteFlowsAndReloads(t *testing.T) {
 	if err := model.prepareDeleteSelected(); err == nil {
 		t.Fatal("prepareDeleteSelected() should fail without candidate")
 	}
-	model.screen = screenOpenClawMenu
+	model.screen = screenAssistantMenu
 	if err := model.prepareDeleteSelected(); err == nil {
 		t.Fatal("prepareDeleteSelected() should fail on menu screen")
 	}
@@ -276,15 +305,17 @@ func TestAnalyzeDeleteFlowsAndReloads(t *testing.T) {
 
 func TestAnalyzeRenderingHelpers(t *testing.T) {
 	model := analyzeModel{
-		width:           100,
-		height:          30,
-		styles:          newAnalyzeStyles(),
-		screen:          screenAssistants,
-		summaries:       []assistantSummary{{Assistant: "openclaw", SessionCount: 2, LeftoverCount: 3}},
-		candidates:      []Candidate{{Assistant: "ollama", Kind: "models", Safety: SafetyConfirm, Reason: "reason", Path: "/tmp/model", SizeBytes: 10}},
-		sessions:        []OpenClawSession{{AgentID: "worker", SessionID: "sid", DisplayName: "Title", TranscriptPath: "/tmp/sid", StartedAt: time.Unix(1, 0), TotalTokens: 1000, MessageCount: 2, SizeBytes: 10}},
-		activeAssistant: "openclaw",
-		status:          "Removed one item.",
+		width:            100,
+		height:           30,
+		styles:           newAnalyzeStyles(),
+		screen:           screenAssistants,
+		summaries:        []assistantSummary{{Assistant: "openclaw", SessionCount: 2, LeftoverCount: 3}},
+		candidates:       []Candidate{{Assistant: "ollama", Kind: "models", Safety: SafetyConfirm, Reason: "reason", Path: "/tmp/model", SizeBytes: 10}},
+		sessions:         []ConversationSession{{Assistant: "openclaw", ID: "sid", Title: "Title", Subtitle: "worker", Path: "/tmp/sid", StartedAt: time.Unix(1, 0), UpdatedAt: time.Unix(1, 0), TotalTokens: 1000, MessageCount: 2, SizeBytes: 10, Deletable: true}},
+		activeAssistant:  "openclaw",
+		status:           "Removed one item.",
+		previewText:      "== User ==\nHow do I fix this?\n\n== Assistant ==\nTry updating the test.",
+		previewSessionID: "sid",
 	}
 
 	if model.Init() != nil {
@@ -297,8 +328,8 @@ func TestAnalyzeRenderingHelpers(t *testing.T) {
 		model.renderFooter(),
 		model.renderAssistantList(),
 		model.renderAssistantDetail(),
-		model.renderOpenClawMenu(),
-		model.renderOpenClawDetail(),
+		model.renderAssistantMenu(),
+		model.renderAssistantMenuDetail(),
 		model.renderSessionsList(),
 		model.renderSessionDetail(),
 		model.renderCandidateList(),
@@ -310,6 +341,17 @@ func TestAnalyzeRenderingHelpers(t *testing.T) {
 		if rendered == "" {
 			t.Fatal("rendered output should not be empty")
 		}
+	}
+	if !strings.Contains(model.renderSessionDetail(), "How do I fix this?") || !strings.Contains(model.renderSessionDetail(), "Try updating the test.") {
+		t.Fatalf("renderSessionDetail() = %q", model.renderSessionDetail())
+	}
+	model.previewText = ""
+	model.previewSessionID = ""
+	if !strings.Contains(model.renderSessionDetail(), "Preview is loaded on demand") {
+		t.Fatalf("renderSessionDetail() should show on-demand hint = %q", model.renderSessionDetail())
+	}
+	if !strings.Contains(strings.Join(wrapDisplayText("中文 mixed English content", 8), "\n"), "\n") {
+		t.Fatal("wrapDisplayText() should wrap mixed-width content")
 	}
 
 	model.screen = screenCandidates
@@ -330,9 +372,9 @@ func TestAnalyzeRenderingHelpers(t *testing.T) {
 		t.Fatalf("View() missing input dialog\n%s", model.View())
 	}
 
-	model.screen = screenOpenClawMenu
+	model.screen = screenAssistantMenu
 	if left, right := model.renderBody(); left == "" || right == "" {
-		t.Fatalf("renderBody(openclaw menu) = %q %q", left, right)
+		t.Fatalf("renderBody(assistant menu) = %q %q", left, right)
 	}
 	model.screen = screenSessions
 	if left, right := model.renderBody(); left == "" || right == "" {

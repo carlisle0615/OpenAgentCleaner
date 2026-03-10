@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -17,11 +18,14 @@ func runAnalyze(args []string, stdout, stderr io.Writer) int {
 	var mode string
 	var jsonOutput bool
 	var beforeRaw string
+	var verbose bool
 
-	fs.StringVar(&assistant, "assistant", "", "start directly with one assistant: openclaw, ironclaw, ollama")
+	fs.StringVar(&assistant, "assistant", "", "start directly with one assistant from --assistants")
 	fs.StringVar(&mode, "mode", "human", "analyze currently supports human mode only")
 	fs.BoolVar(&jsonOutput, "json", false, "analyze currently supports human mode only")
-	fs.StringVar(&beforeRaw, "before", "", "pre-filter OpenClaw conversations before YYYY-MM-DD")
+	fs.StringVar(&beforeRaw, "before", "", "pre-filter assistant conversations before YYYY-MM-DD")
+	fs.BoolVar(&verbose, "verbose", false, "show scan progress on stderr")
+	fs.BoolVar(&verbose, "v", false, "show scan progress on stderr")
 
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -53,6 +57,8 @@ func runAnalyze(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 	}
+	setVerboseLogger(verbose, stderr)
+	defer resetVerboseLogger()
 
 	if err := runAnalyzeTUI(assistants, before, stdout, stderr); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -68,26 +74,57 @@ type assistantSummary struct {
 }
 
 func assistantAnalyzeSummary(assistants []string) ([]assistantSummary, error) {
-	out := make([]assistantSummary, 0, len(assistants))
-	for _, assistant := range assistants {
-		leftovers, err := discoverAssistantLeftovers(assistant)
-		if err != nil {
-			return nil, err
-		}
-		item := assistantSummary{
-			Assistant:     assistant,
-			LeftoverCount: len(leftovers),
-		}
-		if assistant == "openclaw" {
-			sessions, err := discoverOpenClawSessions()
-			if err != nil {
-				return nil, err
-			}
-			item.SessionCount = len(sessions)
-		}
-		out = append(out, item)
+	type result struct {
+		index   int
+		summary assistantSummary
+		err     error
 	}
-	return out, nil
+
+	results := make([]assistantSummary, len(assistants))
+	errCh := make(chan error, 1)
+	var wg sync.WaitGroup
+
+	for i, assistant := range assistants {
+		wg.Add(1)
+		go func(index int, assistant string) {
+			defer wg.Done()
+
+			leftovers, err := discoverAssistantLeftovers(assistant)
+			if err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				return
+			}
+
+			item := assistantSummary{
+				Assistant:     assistant,
+				LeftoverCount: len(leftovers),
+			}
+			if assistantSupportsSessions(assistant) {
+				sessions, err := discoverAssistantSessions(assistant)
+				if err != nil {
+					select {
+					case errCh <- err:
+					default:
+					}
+					return
+				}
+				item.SessionCount = len(sessions)
+			}
+			verbosef("summary for %s: %d conversation(s), %d leftover item(s)", displayAssistant(assistant), item.SessionCount, item.LeftoverCount)
+			results[index] = item
+		}(i, assistant)
+	}
+
+	wg.Wait()
+	select {
+	case err := <-errCh:
+		return nil, err
+	default:
+	}
+	return results, nil
 }
 
 func discoverAssistantLeftovers(assistant string) ([]Candidate, error) {
@@ -98,8 +135,10 @@ func discoverAssistantLeftovers(assistant string) ([]Candidate, error) {
 
 	out := make([]Candidate, 0, len(candidates))
 	for _, candidate := range candidates {
-		if assistant == "openclaw" && candidate.Kind == "session_store" {
-			continue
+		if ignoredKinds := sessionIgnoredCandidateKinds(assistant); ignoredKinds != nil {
+			if _, ok := ignoredKinds[candidate.Kind]; ok {
+				continue
+			}
 		}
 		out = append(out, candidate)
 	}

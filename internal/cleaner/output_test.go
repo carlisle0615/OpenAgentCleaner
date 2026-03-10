@@ -139,35 +139,52 @@ func TestPrintHumanReportAndHelpers(t *testing.T) {
 	}
 
 	for kind, want := range map[string]string{
-		"gateway_logs":     "Logs",
-		"session_store":    "Sessions",
-		"config":           "Config",
-		"env_file":         "Env file",
-		"database":         "Database",
-		"oauth_session":    "Signed-in session",
-		"mcp_config":       "MCP servers",
-		"legacy_settings":  "Legacy settings",
-		"legacy_bootstrap": "Legacy bootstrap",
-		"channels":         "Channels",
-		"tools":            "Tools",
-		"repl_history":     "History",
-		"allow_from":       "Allow list",
-		"service_plist":    "Background service",
-		"saved_state":      "Saved window state",
-		"webkit_cache":     "Web cache",
-		"app_support":      "App support",
-		"server_config":    "Server config",
-		"app_bundle":       "Mac app",
-		"cli_symlink":      "CLI link",
-		"unknown_kind":     "Unknown Kind",
-		"pairing_store":    "Pairing data",
-		"pairing_attempts": "Pairing attempts",
+		"gateway_logs":            "Logs",
+		"session_store":           "Sessions",
+		"config":                  "Config",
+		"env_file":                "Env file",
+		"database":                "Database",
+		"oauth_session":           "Signed-in session",
+		"mcp_config":              "MCP servers",
+		"legacy_settings":         "Legacy settings",
+		"legacy_bootstrap":        "Legacy bootstrap",
+		"channels":                "Channels",
+		"tools":                   "Tools",
+		"repl_history":            "History",
+		"allow_from":              "Allow list",
+		"service_plist":           "Background service",
+		"saved_state":             "Saved window state",
+		"webkit_cache":            "Web cache",
+		"app_support":             "App support",
+		"server_config":           "Server config",
+		"app_bundle":              "Mac app",
+		"cli_symlink":             "CLI link",
+		"archived_sessions":       "Archived sessions",
+		"session_index":           "Session index",
+		"session_db":              "Session database",
+		"desktop_session_storage": "App session storage",
+		"desktop_local_storage":   "App local storage",
+		"desktop_indexeddb":       "App IndexedDB",
+		"transcripts":             "Transcripts",
+		"project_sessions":        "Project sessions",
+		"prompt_history":          "Prompt history",
+		"global_chat_state":       "Global chat state",
+		"workspace_chat_state":    "Workspace chat state",
+		"unknown_kind":            "Unknown Kind",
+		"pairing_store":           "Pairing data",
+		"pairing_attempts":        "Pairing attempts",
 	} {
 		if got := displayKind(kind); got != want {
 			t.Fatalf("displayKind(%q) = %q, want %q", kind, got, want)
 		}
 	}
-	if displayAssistant("openclaw") != "OpenClaw" || displayAssistant("other_tool") != "Other Tool" {
+	if displayAssistant("openclaw") != "OpenClaw" ||
+		displayAssistant("codex") != "Codex Desktop" ||
+		displayAssistant("codex-cli") != "Codex CLI" ||
+		displayAssistant("claudecode") != "Claude Code" ||
+		displayAssistant("cursor") != "Cursor" ||
+		displayAssistant("antigravity") != "Antigravity" ||
+		displayAssistant("other_tool") != "Other Tool" {
 		t.Fatal("displayAssistant() mismatch")
 	}
 	if displaySafety(SafetySafe) != "safe" || displaySafety("custom") != "custom" {

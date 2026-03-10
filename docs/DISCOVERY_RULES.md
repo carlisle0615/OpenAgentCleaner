@@ -1,6 +1,6 @@
 # Discovery Rules
 
-OpenAgentCleaner currently supports `openclaw`, `ironclaw`, and `ollama` on `macOS`.
+OpenAgentCleaner currently supports `openclaw`, `ironclaw`, `ollama`, `codex`, `codex-cli`, `claudecode`, `cursor`, and `antigravity` on `macOS`.
 
 ## OpenClaw
 
@@ -68,3 +68,57 @@ OpenAgentCleaner currently supports `openclaw`, `ironclaw`, and `ollama` on `mac
 
 - `~/.ollama/id_ed25519`
 - `~/.ollama/id_ed25519.pub`
+
+## Codex Desktop
+
+`confirm`
+
+- `~/Library/Application Support/Codex/Session Storage`
+- `~/Library/Application Support/Codex/Local Storage`
+
+Notes
+
+- Desktop app conversations are browsed from the shared `~/.codex` rollout/database store, but desktop cleanup candidates stay scoped to the desktop app's own Electron storage roots.
+
+## Codex CLI
+
+`confirm`
+
+- `~/.codex/sessions`
+- `~/.codex/archived_sessions`
+- `~/.codex/session_index.jsonl`
+- `~/.codex/state_*.sqlite*`
+
+## Claude Code
+
+`confirm`
+
+- `~/.claude/transcripts`
+- `~/.claude/projects`
+- `~/.claude/history.jsonl`
+- `~/Library/Application Support/Claude/Session Storage`
+- `~/Library/Application Support/Claude/Local Storage`
+- `~/Library/Application Support/Claude/IndexedDB`
+
+## Cursor
+
+`confirm`
+
+- `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb*`
+- `~/Library/Application Support/Cursor/User/workspaceStorage`
+
+Notes
+
+- Conversation preview and per-session deletion use `cursorDiskKV` keys such as `composerData:*`, `bubbleId:*`, and `messageRequestContext:*`.
+
+## Antigravity
+
+`confirm`
+
+- `~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb*`
+- `~/Library/Application Support/Antigravity/User/workspaceStorage`
+
+Notes
+
+- Analyze mode can preview task-level session content from `~/.gemini/antigravity/brain/*/task.md`.
+- Antigravity session deletion is intentionally disabled until protobuf-backed indexes can be updated coherently.

@@ -149,6 +149,15 @@ func TestRunScanAndRunCleanValidation(t *testing.T) {
 			t.Fatalf("runScan human auto = %d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 		}
 	})
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runScan([]string{"--assistants", "ollama", "--verbose"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("runScan verbose = %d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "[verbose] scanning leftover candidates for Ollama") {
+		t.Fatalf("runScan verbose stderr = %q", stderr.String())
+	}
 }
 
 func TestScanAndCleanReport(t *testing.T) {
