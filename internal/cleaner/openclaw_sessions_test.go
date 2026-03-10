@@ -74,9 +74,9 @@ func TestOpenClawSessionsLifecycle(t *testing.T) {
 		t.Fatalf("withoutMeta.UpdatedAt = %v, want %v", withoutMeta.UpdatedAt, modTime)
 	}
 
-	filtered := filterSessionsBefore(sessions, time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	filtered := filterOpenClawSessionsBefore(sessions, time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	if len(filtered) != 2 {
-		t.Fatalf("filterSessionsBefore() len = %d, want 2", len(filtered))
+		t.Fatalf("filterOpenClawSessionsBefore() len = %d, want 2", len(filtered))
 	}
 
 	if err := deleteOpenClawSessions([]OpenClawSession{withMeta}); err != nil {

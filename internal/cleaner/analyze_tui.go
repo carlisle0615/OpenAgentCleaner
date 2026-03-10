@@ -10,13 +10,14 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 type analyzeScreen int
 
 const (
 	screenAssistants analyzeScreen = iota
-	screenOpenClawMenu
+	screenAssistantMenu
 	screenSessions
 	screenSessionPreview
 	screenCandidates
@@ -59,33 +60,34 @@ type analyzeStyles struct {
 }
 
 type analyzeModel struct {
-	width           int
-	height          int
-	styles          analyzeStyles
-	assistants      []string
-	summaries       []assistantSummary
-	screen          analyzeScreen
-	activeAssistant string
-	assistantIndex  int
-	openclawIndex   int
-	candidates      []Candidate
-	candidateIndex  int
-	sessions        []OpenClawSession
-	sessionIndex    int
-	sessionBefore   time.Time
-	initialBefore   time.Time
-	inputMode       analyzeInputMode
-	inputLabel      string
-	inputValue      string
-	confirmMode     analyzeConfirmMode
-	confirmTitle    string
-	confirmBody     string
-	confirmCutoff   time.Time
-	confirmSession  OpenClawSession
-	confirmItem     Candidate
-	status          string
-	lastErr         error
-	previewText     string
+	width              int
+	height             int
+	styles             analyzeStyles
+	assistants         []string
+	summaries          []assistantSummary
+	screen             analyzeScreen
+	activeAssistant    string
+	assistantIndex     int
+	assistantMenuIndex int
+	candidates         []Candidate
+	candidateIndex     int
+	sessions           []ConversationSession
+	sessionIndex       int
+	sessionBefore      time.Time
+	initialBefore      time.Time
+	inputMode          analyzeInputMode
+	inputLabel         string
+	inputValue         string
+	confirmMode        analyzeConfirmMode
+	confirmTitle       string
+	confirmBody        string
+	confirmCutoff      time.Time
+	confirmSession     ConversationSession
+	confirmItem        Candidate
+	status             string
+	lastErr            error
+	previewText        string
+	previewSessionID   string
 }
 
 func runAnalyzeTUI(assistants []string, before time.Time, stdout, stderr io.Writer) error {
@@ -127,17 +129,16 @@ func newAnalyzeModel(assistants []string, before time.Time) (analyzeModel, error
 	if len(assistants) == 1 {
 		assistant := assistants[0]
 		m.activeAssistant = assistant
-		switch assistant {
-		case "openclaw":
-			if !before.IsZero() {
+		if assistantSupportsSessions(assistant) {
+			if !before.IsZero() || !m.assistantNeedsMenu(assistant) {
 				m.screen = screenSessions
 				if err := m.reloadSessions(); err != nil {
 					return m, err
 				}
 			} else {
-				m.screen = screenOpenClawMenu
+				m.screen = screenAssistantMenu
 			}
-		default:
+		} else {
 			m.screen = screenCandidates
 			if err := m.reloadCandidates(assistant); err != nil {
 				return m, err
@@ -253,7 +254,7 @@ func (m analyzeModel) handleKey(msg tea.KeyMsg) (analyzeModel, tea.Cmd) {
 		}
 		return m, nil
 	case "x":
-		if m.screen == screenSessions {
+		if m.screen == screenSessions && assistantSupportsSessionDelete(m.activeAssistant) {
 			if m.sessionBefore.IsZero() {
 				m.inputMode = inputSessionBulkDelete
 				m.inputLabel = "Delete conversations updated before date (YYYY-MM-DD)"
@@ -346,10 +347,14 @@ func (m *analyzeModel) moveCursor(delta int) {
 	switch m.screen {
 	case screenAssistants:
 		m.assistantIndex = clampIndex(m.assistantIndex+delta, len(m.summaries))
-	case screenOpenClawMenu:
-		m.openclawIndex = clampIndex(m.openclawIndex+delta, 2)
+	case screenAssistantMenu:
+		m.assistantMenuIndex = clampIndex(m.assistantMenuIndex+delta, 2)
 	case screenSessions:
-		m.sessionIndex = clampIndex(m.sessionIndex+delta, len(m.sessions))
+		nextIndex := clampIndex(m.sessionIndex+delta, len(m.sessions))
+		if nextIndex != m.sessionIndex {
+			m.sessionIndex = nextIndex
+			m.clearSelectedSessionPreview()
+		}
 	case screenCandidates:
 		m.candidateIndex = clampIndex(m.candidateIndex+delta, len(m.candidates))
 	}
@@ -362,29 +367,28 @@ func (m *analyzeModel) activateSelection() error {
 			return nil
 		}
 		m.activeAssistant = m.summaries[m.assistantIndex].Assistant
-		if m.activeAssistant == "openclaw" {
-			m.screen = screenOpenClawMenu
+		if assistantSupportsSessions(m.activeAssistant) {
+			if !m.assistantNeedsMenu(m.activeAssistant) {
+				m.screen = screenSessions
+				return m.reloadSessions()
+			}
+			m.screen = screenAssistantMenu
 			return nil
 		}
 		m.screen = screenCandidates
 		return m.reloadCandidates(m.activeAssistant)
-	case screenOpenClawMenu:
-		if m.openclawIndex == 0 {
+	case screenAssistantMenu:
+		if m.assistantMenuIndex == 0 {
 			m.screen = screenSessions
 			return m.reloadSessions()
 		}
 		m.screen = screenCandidates
-		return m.reloadCandidates("openclaw")
+		return m.reloadCandidates(m.activeAssistant)
 	case screenSessions:
 		if len(m.sessions) == 0 {
 			return nil
 		}
-		session := m.sessions[m.sessionIndex]
-		preview, err := previewOpenClawSession(session.TranscriptPath)
-		if err != nil {
-			return err
-		}
-		m.previewText = preview
+		m.loadSelectedSessionPreview()
 		m.screen = screenSessionPreview
 		return nil
 	}
@@ -398,10 +402,13 @@ func (m *analyzeModel) prepareDeleteSelected() error {
 			return fmt.Errorf("no conversation selected")
 		}
 		session := m.sessions[m.sessionIndex]
+		if !session.Deletable {
+			return fmt.Errorf("%s", session.DeleteExplanation())
+		}
 		m.confirmMode = confirmDeleteSession
 		m.confirmSession = session
 		m.confirmTitle = "Delete conversation?"
-		m.confirmBody = fmt.Sprintf("%s\n%s\n%s", session.DisplayLabel(), formatSessionTime(session.SortTime()), session.TranscriptPath)
+		m.confirmBody = fmt.Sprintf("%s\n%s\n%s", session.DisplayLabel(), formatSessionTime(session.SortTime()), session.Path)
 		return nil
 	case screenCandidates:
 		if len(m.candidates) == 0 {
@@ -436,7 +443,7 @@ func (m *analyzeModel) prepareDeleteSessionsBefore(cutoff time.Time) {
 func (m *analyzeModel) executeConfirm() error {
 	switch m.confirmMode {
 	case confirmDeleteSession:
-		if err := deleteOpenClawSessions([]OpenClawSession{m.confirmSession}); err != nil {
+		if err := deleteConversationSessions([]ConversationSession{m.confirmSession}); err != nil {
 			return err
 		}
 		m.status = "Conversation deleted."
@@ -447,7 +454,7 @@ func (m *analyzeModel) executeConfirm() error {
 			m.status = "No conversations matched that date."
 			return nil
 		}
-		if err := deleteOpenClawSessions(matches); err != nil {
+		if err := deleteConversationSessions(matches); err != nil {
 			return err
 		}
 		m.sessionBefore = m.confirmCutoff
@@ -468,7 +475,7 @@ func (m *analyzeModel) clearConfirm() {
 	m.confirmTitle = ""
 	m.confirmBody = ""
 	m.confirmCutoff = time.Time{}
-	m.confirmSession = OpenClawSession{}
+	m.confirmSession = ConversationSession{}
 	m.confirmItem = Candidate{}
 }
 
@@ -478,8 +485,8 @@ func (m *analyzeModel) navigateBack() {
 		m.screen = screenSessions
 		return
 	case screenCandidates:
-		if m.activeAssistant == "openclaw" {
-			m.screen = screenOpenClawMenu
+		if assistantSupportsSessions(m.activeAssistant) && m.assistantNeedsMenu(m.activeAssistant) {
+			m.screen = screenAssistantMenu
 			return
 		}
 		if len(m.assistants) > 1 {
@@ -487,9 +494,15 @@ func (m *analyzeModel) navigateBack() {
 			return
 		}
 	case screenSessions:
-		m.screen = screenOpenClawMenu
+		if m.assistantNeedsMenu(m.activeAssistant) {
+			m.screen = screenAssistantMenu
+			return
+		}
+		if len(m.assistants) > 1 {
+			m.screen = screenAssistants
+		}
 		return
-	case screenOpenClawMenu:
+	case screenAssistantMenu:
 		if len(m.assistants) > 1 {
 			m.screen = screenAssistants
 			return
@@ -502,8 +515,8 @@ func (m analyzeModel) atRoot() bool {
 	case screenAssistants:
 		return true
 	case screenCandidates:
-		return len(m.assistants) == 1 && m.activeAssistant != "openclaw"
-	case screenOpenClawMenu:
+		return len(m.assistants) == 1 && !assistantSupportsSessions(m.activeAssistant)
+	case screenAssistantMenu:
 		return len(m.assistants) == 1
 	default:
 		return false
@@ -524,11 +537,12 @@ func (m *analyzeModel) reloadCandidates(assistant string) error {
 		return m.candidates[i].Path < m.candidates[j].Path
 	})
 	m.candidateIndex = clampIndex(m.candidateIndex, len(m.candidates))
+	m.setAssistantLeftoverCount(assistant, len(m.candidates))
 	return nil
 }
 
 func (m *analyzeModel) reloadSessions() error {
-	sessions, err := discoverOpenClawSessions()
+	sessions, err := discoverAssistantSessions(m.activeAssistant)
 	if err != nil {
 		return err
 	}
@@ -540,15 +554,49 @@ func (m *analyzeModel) reloadSessions() error {
 	})
 	m.sessions = sessions
 	m.sessionIndex = clampIndex(m.sessionIndex, len(m.sessions))
+	m.setAssistantSessionCount(m.activeAssistant, len(m.sessions))
+	m.clearSelectedSessionPreview()
 	return nil
 }
 
-func (m analyzeModel) sessionsSource() []OpenClawSession {
-	sessions, err := discoverOpenClawSessions()
-	if err != nil {
-		return nil
-	}
+func (m analyzeModel) sessionsSource() []ConversationSession {
+	sessions, _ := discoverAssistantSessions(m.activeAssistant)
 	return sessions
+}
+
+func (m analyzeModel) assistantNeedsMenu(assistant string) bool {
+	if !assistantSupportsSessions(assistant) {
+		return false
+	}
+	summary, ok := m.summaryForAssistant(assistant)
+	return ok && summary.LeftoverCount > 0
+}
+
+func (m analyzeModel) summaryForAssistant(assistant string) (assistantSummary, bool) {
+	for _, item := range m.summaries {
+		if item.Assistant == assistant {
+			return item, true
+		}
+	}
+	return assistantSummary{}, false
+}
+
+func (m *analyzeModel) setAssistantSessionCount(assistant string, count int) {
+	for i := range m.summaries {
+		if m.summaries[i].Assistant == assistant {
+			m.summaries[i].SessionCount = count
+			return
+		}
+	}
+}
+
+func (m *analyzeModel) setAssistantLeftoverCount(assistant string, count int) {
+	for i := range m.summaries {
+		if m.summaries[i].Assistant == assistant {
+			m.summaries[i].LeftoverCount = count
+			return
+		}
+	}
 }
 
 func clampIndex(index, length int) int {
@@ -577,7 +625,6 @@ func (m analyzeModel) View() string {
 	footer := m.renderFooter()
 
 	contentWidth := m.width - 4
-	listWidth := contentWidth / 2
 	var body string
 	if contentWidth < 80 {
 		body = lipgloss.JoinVertical(lipgloss.Left,
@@ -585,14 +632,13 @@ func (m analyzeModel) View() string {
 			m.styles.box.Render(detailPane),
 		)
 	} else {
-		// Use a simple flow with a soft right border for the list.
-		listMin := 45
-		if listWidth < listMin {
-			listMin = listWidth
-		}
+		detailPaneStyled := lipgloss.NewStyle().
+			Width(m.detailPaneWidth()).
+			MaxWidth(m.detailPaneWidth()).
+			Render(detailPane)
 
 		listPaneStyled := lipgloss.NewStyle().
-			Width(listMin).
+			Width(m.sessionListPaneWidth()).
 			Border(lipgloss.NormalBorder(), false, true, false, false).
 			BorderForeground(colorBorder).
 			MarginRight(3).
@@ -601,7 +647,7 @@ func (m analyzeModel) View() string {
 
 		body = lipgloss.JoinHorizontal(lipgloss.Top,
 			listPaneStyled,
-			m.styles.box.Render(detailPane),
+			m.styles.box.Render(detailPaneStyled),
 		)
 	}
 
@@ -618,7 +664,7 @@ func (m analyzeModel) View() string {
 func (m analyzeModel) renderHeader() string {
 	breadcrumbs := []string{"Analyze"}
 	switch m.screen {
-	case screenOpenClawMenu, screenSessions, screenSessionPreview, screenCandidates:
+	case screenAssistantMenu, screenSessions, screenSessionPreview, screenCandidates:
 		if m.activeAssistant != "" {
 			breadcrumbs = append(breadcrumbs, displayAssistant(m.activeAssistant))
 		}
@@ -645,7 +691,7 @@ func (m analyzeModel) renderHeader() string {
 
 	subtitle := m.styles.muted.Render("↑/↓ move  •  Enter open  •  d delete  •  q back")
 	if m.screen == screenSessions && !m.sessionBefore.IsZero() {
-		subtitle = m.styles.warn.Render(fmt.Sprintf("Filtering OpenClaw conversations before %s. Press c to clear.", m.sessionBefore.Format("2006-01-02")))
+		subtitle = m.styles.warn.Render(fmt.Sprintf("Filtering %s conversations before %s. Press c to clear.", displayAssistant(m.activeAssistant), m.sessionBefore.Format("2006-01-02")))
 	}
 
 	// Minimalistic header padding
@@ -660,8 +706,8 @@ func (m analyzeModel) renderBody() (string, string) {
 	switch m.screen {
 	case screenAssistants:
 		return m.renderAssistantList(), m.renderAssistantDetail()
-	case screenOpenClawMenu:
-		return m.renderOpenClawMenu(), m.renderOpenClawDetail()
+	case screenAssistantMenu:
+		return m.renderAssistantMenu(), m.renderAssistantMenuDetail()
 	case screenSessions:
 		return m.renderSessionsList(), m.renderSessionDetail()
 	case screenSessionPreview:
@@ -679,7 +725,10 @@ func (m analyzeModel) renderFooter() string {
 	case screenSessionPreview:
 		keys = []string{"q Back to conversations"}
 	case screenSessions:
-		keys = append(keys, "d Delete item", "f Filter date", "x Bulk delete", "c Clear filter")
+		keys = append(keys, "f Filter date", "c Clear filter")
+		if assistantSupportsSessionDelete(m.activeAssistant) {
+			keys = append(keys, "d Delete item", "x Bulk delete")
+		}
 	case screenCandidates:
 		keys = append(keys, "d Delete item")
 	}
@@ -719,18 +768,20 @@ func (m analyzeModel) renderAssistantDetail() string {
 		"",
 		m.styles.accent.Render("Press Enter to inspect."),
 	}
-	if item.Assistant == "openclaw" {
-		lines = append(lines, m.styles.muted.Render("OpenClaw supports date-based cleanup."))
+	if assistantSupportsSessionDelete(item.Assistant) {
+		lines = append(lines, m.styles.muted.Render("This assistant supports session-safe deletion."))
+	} else if assistantSupportsSessions(item.Assistant) {
+		lines = append(lines, m.styles.muted.Render("This assistant currently supports preview-only session browsing."))
 	}
 	return strings.Join(lines, "\n")
 }
 
-func (m analyzeModel) renderOpenClawMenu() string {
+func (m analyzeModel) renderAssistantMenu() string {
 	options := []string{"Conversations", "Other leftover items"}
-	lines := []string{m.styles.header.Render("OpenClaw Categories"), ""}
+	lines := []string{m.styles.header.Render(displayAssistant(m.activeAssistant) + " Categories"), ""}
 	for i, option := range options {
 		line := option
-		if i == m.openclawIndex {
+		if i == m.assistantMenuIndex {
 			line = m.styles.selected.Render(fmt.Sprintf("❯ %s", line))
 		} else {
 			line = fmt.Sprintf("  %s", line)
@@ -740,19 +791,22 @@ func (m analyzeModel) renderOpenClawMenu() string {
 	return strings.Join(lines, "\n")
 }
 
-func (m analyzeModel) renderOpenClawDetail() string {
-	sessions, _ := discoverOpenClawSessions()
-	leftovers, _ := discoverAssistantLeftovers("openclaw")
+func (m analyzeModel) renderAssistantMenuDetail() string {
+	summary, _ := m.summaryForAssistant(m.activeAssistant)
 	detail := []string{
 		m.styles.header.Render("Stats"),
 		"",
-		fmt.Sprintf("%-16s %8d", m.styles.muted.Render("Conversations"), len(sessions)),
-		fmt.Sprintf("%-16s %8d", m.styles.muted.Render("Other items"), len(leftovers)),
+		fmt.Sprintf("%-16s %8d", m.styles.muted.Render("Conversations"), summary.SessionCount),
+		fmt.Sprintf("%-16s %8d", m.styles.muted.Render("Other items"), summary.LeftoverCount),
 		"",
 		m.styles.accent.Render("Conversations view lets you:"),
 		m.styles.muted.Render("• browse one conversation at a time"),
 		m.styles.muted.Render("• filter by date"),
-		m.styles.muted.Render("• delete everything before a chosen date"),
+	}
+	if assistantSupportsSessionDelete(m.activeAssistant) {
+		detail = append(detail, m.styles.muted.Render("• delete sessions with index cleanup"))
+	} else {
+		detail = append(detail, m.styles.muted.Render("• preview only when index cleanup is not defined"))
 	}
 	if !m.initialBefore.IsZero() {
 		detail = append(detail, "", m.styles.warn.Render("Startup filter: before "+m.initialBefore.Format("2006-01-02")))
@@ -766,10 +820,11 @@ func (m analyzeModel) renderSessionsList() string {
 		lines = append(lines, m.styles.muted.Render("No conversations match the current filter."))
 		return strings.Join(lines, "\n")
 	}
+	labelWidth := m.sessionListLabelWidth()
 	for i, session := range m.sessions {
 		dateStr := session.SortTime().Format("2006-01-02")
 		sizeStr := formatBytes(session.SizeBytes)
-		labelStr := trimForDisplay(session.ShortLabel(), 22)
+		labelStr := trimForDisplay(session.ShortLabel(), labelWidth)
 
 		row := fmt.Sprintf("%-10s %-8s %s", m.styles.muted.Render(dateStr), sizeStr, m.styles.muted.Render(labelStr))
 		if i == m.sessionIndex {
@@ -792,55 +847,167 @@ func (m analyzeModel) renderSessionDetail() string {
 		"",
 		fmt.Sprintf("  %-18s %s", m.styles.muted.Render("Updated:"), formatSessionTime(session.SortTime())),
 		fmt.Sprintf("  %-18s %s", m.styles.muted.Render("Started:"), formatSessionTime(session.StartedAt)),
-		fmt.Sprintf("  %-18s %s", m.styles.muted.Render("Agent:"), session.AgentID),
 		fmt.Sprintf("  %-18s %d", m.styles.muted.Render("Events:"), session.MessageCount),
 		fmt.Sprintf("  %-18s %s", m.styles.muted.Render("Tokens:"), m.styles.accent.Render(formatTokenCount(session.TotalTokens))),
 		fmt.Sprintf("  %-18s %s", m.styles.muted.Render("Size:"), formatBytes(session.SizeBytes)),
 	}
+	if session.Subtitle != "" {
+		lines = append(lines, fmt.Sprintf("  %-18s %s", m.styles.muted.Render("Subtitle:"), trimForDisplay(session.Subtitle, 48)))
+	}
 	if session.Source != "" {
 		lines = append(lines, fmt.Sprintf("  %-18s %s", m.styles.muted.Render("Source:"), trimForDisplay(session.Source, 48)))
 	}
-	lines = append(lines, "", m.styles.muted.Render("  Transcript"), "  "+session.TranscriptPath, "", m.styles.accent.Render("  Press d to delete only this conversation."))
-	if m.sessionBefore.IsZero() {
-		lines = append(lines, m.styles.warn.Render("  Press x to choose a cutoff date and bulk-delete older conversations."))
+	lines = append(lines, "", m.styles.muted.Render("  Session data"), "  "+session.Path)
+	lines = append(lines, "", m.styles.header.Render("  Preview"), "")
+	if !m.hasSelectedSessionPreview() {
+		lines = append(lines, m.styles.muted.Render("  Preview is loaded on demand. Press Enter to load."))
 	} else {
-		lines = append(lines, m.styles.warn.Render("  Press x to delete all conversations in the current filter."))
+		lines = append(lines, m.renderPreviewBlock(m.previewText, m.sessionPreviewLineLimit())...)
+	}
+	if session.Deletable {
+		lines = append(lines, "", m.styles.accent.Render("  Press d to delete only this conversation."))
+		if m.sessionBefore.IsZero() {
+			lines = append(lines, m.styles.warn.Render("  Press x to choose a cutoff date and bulk-delete older conversations."))
+		} else {
+			lines = append(lines, m.styles.warn.Render("  Press x to delete all conversations in the current filter."))
+		}
+	} else {
+		lines = append(lines, "", m.styles.manual.Render("  Preview only."), "  "+session.DeleteExplanation())
 	}
 	return strings.Join(lines, "\n")
 }
 
 func (m analyzeModel) renderSessionPreview() string {
-	if m.previewText == "" {
-		return m.styles.muted.Render("Unable to load preview data.")
-	}
-
 	lines := []string{
 		m.styles.header.Render("Conversation Preview"),
 		"",
 	}
+	lines = append(lines, m.renderPreviewBlock(m.previewText, m.height-12)...)
+	return strings.Join(lines, "\n")
+}
 
-	// Truncate the preview text to fit reasonably well
-	previewLines := strings.Split(m.previewText, "\n")
-	maxLines := m.height - 12 // Leave space for headers, footers
-	if maxLines < 10 {
-		maxLines = 10
+func (m *analyzeModel) loadSelectedSessionPreview() {
+	m.clearSelectedSessionPreview()
+	if len(m.sessions) == 0 || m.sessionIndex >= len(m.sessions) {
+		return
+	}
+	session := m.sessions[m.sessionIndex]
+	preview, err := previewConversationSession(session)
+	if err != nil {
+		m.previewText = "Unable to load preview data: " + err.Error()
+		m.previewSessionID = session.ID
+		return
+	}
+	m.previewText = preview
+	m.previewSessionID = session.ID
+}
+
+func (m *analyzeModel) clearSelectedSessionPreview() {
+	m.previewText = ""
+	m.previewSessionID = ""
+}
+
+func (m analyzeModel) hasSelectedSessionPreview() bool {
+	if len(m.sessions) == 0 || m.sessionIndex >= len(m.sessions) {
+		return false
+	}
+	selected := m.sessions[m.sessionIndex]
+	return m.previewSessionID == selected.ID && strings.TrimSpace(m.previewText) != ""
+}
+
+func (m analyzeModel) renderPreviewBlock(preview string, maxLines int) []string {
+	if strings.TrimSpace(preview) == "" {
+		return []string{m.styles.muted.Render("  Unable to load preview data.")}
+	}
+	if maxLines < 8 {
+		maxLines = 8
 	}
 
+	previewLines := strings.Split(preview, "\n")
+	lines := make([]string, 0, len(previewLines)+1)
 	if len(previewLines) > maxLines {
-		// Just take the tail part
-		lines = append(lines, m.styles.muted.Render(fmt.Sprintf("... (%d truncated lines) ...", len(previewLines)-maxLines)))
-		previewLines = previewLines[len(previewLines)-maxLines:]
+		lines = append(lines, m.styles.muted.Render(fmt.Sprintf("  ... (%d truncated lines) ...", len(previewLines)-maxLines)))
+		previewLines = previewLines[:maxLines]
 	}
-
-	for _, l := range previewLines {
-		if strings.HasPrefix(l, "== User ==") || strings.HasPrefix(l, "== Assistant ==") || strings.HasPrefix(l, "== System ==") {
-			lines = append(lines, m.styles.accent.Render(strings.TrimSpace(l)))
-		} else {
-			lines = append(lines, l)
+	for _, line := range previewLines {
+		wrapped := wrapDisplayText(line, m.previewWrapWidth())
+		for _, wrappedLine := range wrapped {
+			lines = append(lines, m.renderPreviewLine(wrappedLine))
 		}
 	}
+	return lines
+}
 
-	return strings.Join(lines, "\n")
+func (m analyzeModel) renderPreviewLine(line string) string {
+	switch {
+	case strings.HasPrefix(line, "== User ==") || strings.HasPrefix(line, "== Assistant ==") || strings.HasPrefix(line, "== System =="):
+		return "  " + m.styles.accent.Render(strings.TrimSpace(line))
+	default:
+		return "  " + line
+	}
+}
+
+func (m analyzeModel) sessionListPaneWidth() int {
+	contentWidth := m.width - 4
+	if contentWidth <= 0 {
+		return 54
+	}
+	listWidth := contentWidth * 45 / 100
+	if listWidth < 54 {
+		listWidth = 54
+	}
+	const detailMin = 42
+	if contentWidth-listWidth-4 < detailMin {
+		listWidth = contentWidth - detailMin - 4
+	}
+	if listWidth < 38 {
+		listWidth = 38
+	}
+	return listWidth
+}
+
+func (m analyzeModel) sessionListLabelWidth() int {
+	labelWidth := m.sessionListPaneWidth() - 24
+	if labelWidth < 18 {
+		labelWidth = 18
+	}
+	return labelWidth
+}
+
+func (m analyzeModel) sessionPreviewLineLimit() int {
+	limit := m.height - 24
+	if limit < 10 {
+		limit = 10
+	}
+	return limit
+}
+
+func (m analyzeModel) detailPaneWidth() int {
+	contentWidth := m.width - 4
+	detailWidth := contentWidth - m.sessionListPaneWidth() - 4
+	if detailWidth < 42 {
+		detailWidth = 42
+	}
+	return detailWidth
+}
+
+func (m analyzeModel) previewWrapWidth() int {
+	width := m.detailPaneWidth() - 6
+	if width < 16 {
+		width = 16
+	}
+	return width
+}
+
+func wrapDisplayText(value string, width int) []string {
+	if width <= 0 {
+		return []string{value}
+	}
+	if value == "" {
+		return []string{""}
+	}
+	wrapped := runewidth.Wrap(value, width)
+	return strings.Split(wrapped, "\n")
 }
 
 func (m analyzeModel) renderCandidateList() string {

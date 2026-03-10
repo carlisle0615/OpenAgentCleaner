@@ -8,7 +8,7 @@ import (
 
 func TestDefaultAssistants(t *testing.T) {
 	got := defaultAssistants()
-	want := []string{"openclaw", "ironclaw", "ollama"}
+	want := []string{"openclaw", "ironclaw", "ollama", "codex", "codex-cli", "claudecode", "cursor", "antigravity"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("defaultAssistants() = %v, want %v", got, want)
 	}
@@ -21,9 +21,10 @@ func TestParseAssistantList(t *testing.T) {
 		want    string
 		wantErr string
 	}{
-		{name: "default", raw: "", want: "openclaw,ironclaw,ollama"},
+		{name: "default", raw: "", want: "openclaw,ironclaw,ollama,codex,codex-cli,claudecode,cursor,antigravity"},
 		{name: "dedupe and sort", raw: "ollama,openclaw,ollama", want: "ollama,openclaw"},
 		{name: "trim and normalize", raw: " IronClaw , openclaw ", want: "ironclaw,openclaw"},
+		{name: "new assistants", raw: "cursor,codex,codexcli,claude-code,antigravity", want: "antigravity,claudecode,codex,codex-cli,cursor"},
 		{name: "unsupported", raw: "foo", wantErr: `unsupported assistant "foo"`},
 		{name: "empty selection", raw: ",,", wantErr: "no assistants selected"},
 	}
@@ -109,5 +110,11 @@ func TestToJSON(t *testing.T) {
 func TestCleanPath(t *testing.T) {
 	if got := cleanPath(" /tmp/foo/../bar "); got != "/tmp/bar" {
 		t.Fatalf("cleanPath() = %q", got)
+	}
+}
+
+func TestAssistantFlagHelp(t *testing.T) {
+	if got := assistantFlagHelp(); !strings.Contains(got, "claudecode") || !strings.Contains(got, "cursor") {
+		t.Fatalf("assistantFlagHelp() = %q", got)
 	}
 }

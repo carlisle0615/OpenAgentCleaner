@@ -60,6 +60,7 @@ type options struct {
 	Assistants   []string
 	Mode         string
 	JSON         bool
+	Verbose      bool
 	CandidateIDs []string
 	Kinds        []string
 	Safeties     []Safety
@@ -67,8 +68,25 @@ type options struct {
 	DryRun       bool
 }
 
+var supportedAssistants = []string{
+	"openclaw",
+	"ironclaw",
+	"ollama",
+	"codex",
+	"codex-cli",
+	"claudecode",
+	"cursor",
+	"antigravity",
+}
+
 func defaultAssistants() []string {
-	return []string{"openclaw", "ironclaw", "ollama"}
+	out := make([]string, 0, len(supportedAssistants))
+	out = append(out, supportedAssistants...)
+	return out
+}
+
+func assistantFlagHelp() string {
+	return "comma-separated assistants: " + strings.Join(defaultAssistants(), ",")
 }
 
 func parseAssistantList(raw string) ([]string, error) {
@@ -77,11 +95,17 @@ func parseAssistantList(raw string) ([]string, error) {
 	}
 
 	seen := map[string]struct{}{}
-	out := make([]string, 0, 3)
+	out := make([]string, 0, len(supportedAssistants))
 	for _, part := range strings.Split(raw, ",") {
 		name := strings.ToLower(strings.TrimSpace(part))
 		switch name {
-		case "openclaw", "ironclaw", "ollama":
+		case "openclaw", "ironclaw", "ollama", "codex", "codex-cli", "codexcli", "claudecode", "claude-code", "cursor", "antigravity":
+			if name == "codexcli" {
+				name = "codex-cli"
+			}
+			if name == "claude-code" {
+				name = "claudecode"
+			}
 			if _, ok := seen[name]; !ok {
 				seen[name] = struct{}{}
 				out = append(out, name)

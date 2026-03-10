@@ -1,6 +1,6 @@
 # Current Plan
 
-Last updated: 2026-03-09
+Last updated: 2026-03-10
 
 ## Active Tasks
 
@@ -12,7 +12,8 @@ Last updated: 2026-03-09
 | Refresh release and Homebrew tap     | Completed (verified) | `docs/current-plans/release-brew-refresh.md`  |
 | Add Homebrew formula license         | Completed (verified) | `docs/current-plans/homebrew-formula-license.md` |
 | Split human and agent CLI docs       | Completed (verified) | `docs/current-plans/readme-human-agent.md`    |
-| Install `oac` and inspect Ollama cleanup candidates | Completed (verified) | `docs/current-plans/install-oac-ollama-check.md` |
+| Install `oac` and inspect local cleanup candidates | Completed (verified) | `docs/current-plans/install-oac-ollama-check.md` |
+| Add Codex, Antigravity, Cursor, and Claude Code cleanup support | Completed (verified) | `docs/current-plans/codex-cursor-claude-antigravity-cleanup.md` |
 | Redesign CLI for agent-first cleanup | Completed (verified) | `docs/current-plans/agent-first-cli-redesign.md` |
 | Release and Homebrew refresh for agent-first CLI | Completed (verified) | `docs/current-plans/release-brew-refresh.md` |
 | Clarify agent usage in CLI help      | Completed (verified) | `docs/current-plans/cli-help-agent-guidance.md` |

@@ -14,7 +14,7 @@
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/carlisle0615/OpenAgentCleaner"></a>
 </p>
 
-OpenAgentCleaner is a macOS-first cleanup tool for local AI assistants. It focuses on assistant-specific leftovers such as logs, caches, models, session stores, launch agents, and local state. The workflow stays conservative: scan first, classify clearly, confirm explicitly, then delete.
+OpenAgentCleaner is a macOS-first cleanup tool for local AI assistants. It focuses on assistant-specific leftovers such as logs, caches, models, session stores, launch agents, and local state. This now includes local conversation/session stores for Codex Desktop, Codex CLI, Claude Code, Cursor, and Antigravity. The workflow stays conservative: scan first, classify clearly, confirm explicitly, then delete.
 
 The default command is `oac`.
 
@@ -53,12 +53,13 @@ Start with a read-only scan:
 oac scan
 ```
 
-Browse leftovers and OpenClaw conversations in the TUI:
+Browse leftovers and assistant conversations in the TUI:
 
 ```bash
 oac analyze
 oac analyze --assistant openclaw
-oac analyze --assistant openclaw --before 2026-03-01
+oac analyze --assistant codex-cli
+oac analyze --assistant cursor --before 2026-03-01
 ```
 
 Clean only recommended leftovers:
@@ -85,6 +86,11 @@ Human-friendly commands stay in this README. If you want machine-readable output
 - `openclaw`
 - `ironclaw`
 - `ollama`
+- `codex`
+- `codex-cli`
+- `claudecode`
+- `cursor`
+- `antigravity`
 
 ## Safety
 
@@ -98,6 +104,8 @@ This is intentionally conservative. For example:
 
 - OpenClaw workspaces are not auto-deleted.
 - Ollama SSH keys are not auto-deleted.
+- Cursor workspace chat state stays in `confirm`, not `safe`.
+- Antigravity task sessions are preview-only until protobuf-backed session indexes can be updated safely.
 - Agent mode refuses real deletion unless both an explicit selector and `--yes` are present.
 
 ## Analyze Mode
@@ -106,9 +114,10 @@ This is intentionally conservative. For example:
 
 - Browse assistants from one screen.
 - Inspect leftovers in a two-pane TUI.
-- Review OpenClaw conversations separately from other files.
-- Filter OpenClaw conversations by date.
-- Delete one conversation, one leftover item, or all conversations before a cutoff date.
+- Review per-session titles and content previews for assistants with parseable local session data.
+- Filter conversations by date.
+- Delete one conversation, one leftover item, or all conversations before a cutoff date when the backing indexes can be updated safely.
+- Preview-only providers stay non-destructive in the session browser.
 
 TUI controls:
 
@@ -116,8 +125,8 @@ TUI controls:
 - `Enter`: open
 - `q` / `Esc`: back or quit
 - `d`: delete selected item
-- `f`: set OpenClaw date filter
-- `x`: delete OpenClaw conversations before a date
+- `f`: set conversation date filter
+- `x`: delete conversations before a date when supported
 - `c`: clear the active date filter
 
 ## Install
@@ -164,7 +173,7 @@ oac version
 Scan specific assistants:
 
 ```bash
-oac scan --assistants openclaw,ollama
+oac scan --assistants openclaw,codex,codex-cli,claudecode
 ```
 
 Preview a larger cleanup:

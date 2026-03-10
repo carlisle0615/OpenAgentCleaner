@@ -94,10 +94,13 @@ func runScan(args []string, stdout, stderr io.Writer) int {
 	var rawAssistants string
 	var mode string
 	var jsonOutput bool
+	var verbose bool
 
-	fs.StringVar(&rawAssistants, "assistants", strings.Join(defaultAssistants(), ","), "comma-separated assistants: openclaw,ironclaw,ollama")
+	fs.StringVar(&rawAssistants, "assistants", strings.Join(defaultAssistants(), ","), assistantFlagHelp())
 	fs.StringVar(&mode, "mode", "auto", "output mode: auto, human, agent")
 	fs.BoolVar(&jsonOutput, "json", false, "emit JSON")
+	fs.BoolVar(&verbose, "verbose", false, "show scan progress on stderr")
+	fs.BoolVar(&verbose, "v", false, "show scan progress on stderr")
 
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -108,11 +111,14 @@ func runScan(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
+	setVerboseLogger(verbose, stderr)
+	defer resetVerboseLogger()
 
 	report, err := scanReport(options{
 		Assistants: assistants,
 		Mode:       mode,
 		JSON:       jsonOutput,
+		Verbose:    verbose,
 		DryRun:     true,
 	})
 	if err != nil {
@@ -140,8 +146,9 @@ func runClean(args []string, stdout, stderr io.Writer) int {
 	var jsonOutput bool
 	var yes bool
 	var dryRun bool
+	var verbose bool
 
-	fs.StringVar(&rawAssistants, "assistants", strings.Join(defaultAssistants(), ","), "comma-separated assistants: openclaw,ironclaw,ollama")
+	fs.StringVar(&rawAssistants, "assistants", strings.Join(defaultAssistants(), ","), assistantFlagHelp())
 	fs.StringVar(&rawIDs, "id", "", "comma-separated candidate IDs from `oac scan`")
 	fs.StringVar(&rawKinds, "kind", "", "comma-separated kinds such as logs,models,config")
 	fs.StringVar(&rawSafeties, "safety", "", "comma-separated safety buckets to target: safe,confirm")
@@ -149,6 +156,8 @@ func runClean(args []string, stdout, stderr io.Writer) int {
 	fs.BoolVar(&jsonOutput, "json", false, "emit JSON")
 	fs.BoolVar(&yes, "yes", false, "skip prompts and delete all eligible items")
 	fs.BoolVar(&dryRun, "dry-run", false, "preview cleanup without deleting")
+	fs.BoolVar(&verbose, "verbose", false, "show scan progress on stderr")
+	fs.BoolVar(&verbose, "v", false, "show scan progress on stderr")
 
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -164,6 +173,8 @@ func runClean(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
+	setVerboseLogger(verbose, stderr)
+	defer resetVerboseLogger()
 
 	report, err := cleanReport(options{
 		Assistants:   assistants,
@@ -172,6 +183,7 @@ func runClean(args []string, stdout, stderr io.Writer) int {
 		Safeties:     safeties,
 		Mode:         mode,
 		JSON:         jsonOutput,
+		Verbose:      verbose,
 		Yes:          yes,
 		DryRun:       dryRun,
 	}, stdout, stderr)

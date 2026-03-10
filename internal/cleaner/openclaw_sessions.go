@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/mattn/go-runewidth"
 )
 
 type OpenClawSession struct {
@@ -69,6 +71,7 @@ func discoverOpenClawSessions() ([]OpenClawSession, error) {
 
 	var sessions []OpenClawSession
 	for _, root := range openClawStateRoots(home) {
+		verbosef("reading OpenClaw sessions from %s", root)
 		agentRoots, err := filepath.Glob(filepath.Join(root, "agents", "*"))
 		if err != nil {
 			return nil, err
@@ -263,44 +266,81 @@ func deleteOpenClawSessions(sessions []OpenClawSession) error {
 
 	for metadataPath, group := range grouped {
 		deleted := make([]sessionKey, 0, len(group))
+		transcriptPaths := make([]string, 0, len(group))
 		for _, session := range group {
-			if err := deletePath(session.TranscriptPath); err != nil {
-				return err
-			}
+			transcriptPaths = append(transcriptPaths, session.TranscriptPath)
 			deleted = append(deleted, sessionKey{
 				Key:       session.SessionKey,
 				SessionID: session.SessionID,
 			})
 		}
 
-		if metadataPath == "" || !pathExists(metadataPath) || len(deleted) == 0 {
+		if len(deleted) == 0 {
 			continue
 		}
 
-		meta, err := readOpenClawSessionsMetadata(metadataPath)
+		var (
+			meta          map[string]openClawSessionMeta
+			err           error
+			metadataPatch bool
+		)
+		if metadataPath != "" && pathExists(metadataPath) {
+			meta, err = readOpenClawSessionsMetadata(metadataPath)
+			if err != nil {
+				return err
+			}
+			removeKeys := map[string]struct{}{}
+			removeIDs := map[string]struct{}{}
+			for _, item := range deleted {
+				if item.Key != "" {
+					removeKeys[item.Key] = struct{}{}
+				}
+				if item.SessionID != "" {
+					removeIDs[item.SessionID] = struct{}{}
+				}
+			}
+			for key, value := range meta {
+				if _, ok := removeKeys[key]; ok {
+					delete(meta, key)
+					continue
+				}
+				if _, ok := removeIDs[value.SessionID]; ok {
+					delete(meta, key)
+				}
+			}
+			metadataPatch = true
+		}
+
+		staged, err := stageDeletePaths(transcriptPaths)
 		if err != nil {
 			return err
 		}
-		removeKeys := map[string]struct{}{}
-		removeIDs := map[string]struct{}{}
-		for _, item := range deleted {
-			if item.Key != "" {
-				removeKeys[item.Key] = struct{}{}
+		metadataBackup, err := backupFileIfExists(metadataPath)
+		if err != nil {
+			_ = restoreStagedDeletes(staged)
+			return err
+		}
+
+		rollback := func(cause error) error {
+			if restoreErr := restoreCopiedBackups(metadataBackup); restoreErr != nil {
+				return fmt.Errorf("%w; restore metadata backup: %v", cause, restoreErr)
 			}
-			if item.SessionID != "" {
-				removeIDs[item.SessionID] = struct{}{}
+			if restoreErr := restoreStagedDeletes(staged); restoreErr != nil {
+				return fmt.Errorf("%w; restore transcripts: %v", cause, restoreErr)
+			}
+			_ = cleanupCopiedBackups(metadataBackup)
+			return cause
+		}
+
+		if metadataPatch {
+			if err := writeJSONAtomic(metadataPath, meta); err != nil {
+				return rollback(err)
 			}
 		}
-		for key, value := range meta {
-			if _, ok := removeKeys[key]; ok {
-				delete(meta, key)
-				continue
-			}
-			if _, ok := removeIDs[value.SessionID]; ok {
-				delete(meta, key)
-			}
+		if err := cleanupCopiedBackups(metadataBackup); err != nil {
+			return err
 		}
-		if err := writeJSONAtomic(metadataPath, meta); err != nil {
+		if err := cleanupStagedDeletes(staged); err != nil {
 			return err
 		}
 	}
@@ -320,7 +360,7 @@ func writeJSONAtomic(path string, value any) error {
 	return os.Rename(temp, path)
 }
 
-func filterSessionsBefore(sessions []OpenClawSession, cutoff time.Time) []OpenClawSession {
+func filterOpenClawSessionsBefore(sessions []OpenClawSession, cutoff time.Time) []OpenClawSession {
 	out := make([]OpenClawSession, 0, len(sessions))
 	for _, session := range sessions {
 		if session.SortTime().Before(cutoff) {
@@ -417,11 +457,11 @@ func unixMilli(ms int64) time.Time {
 
 func trimForDisplay(value string, limit int) string {
 	value = strings.TrimSpace(value)
-	if len(value) <= limit {
+	if runewidth.StringWidth(value) <= limit {
 		return value
 	}
 	if limit <= 3 {
-		return value[:limit]
+		return runewidth.Truncate(value, limit, "")
 	}
-	return value[:limit-3] + "..."
+	return runewidth.Truncate(value, limit, "...")
 }

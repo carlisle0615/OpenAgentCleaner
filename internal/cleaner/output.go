@@ -219,6 +219,16 @@ func displayAssistant(name string) string {
 		return "IronClaw"
 	case "ollama":
 		return "Ollama"
+	case "codex":
+		return "Codex Desktop"
+	case "codex-cli":
+		return "Codex CLI"
+	case "claudecode":
+		return "Claude Code"
+	case "cursor":
+		return "Cursor"
+	case "antigravity":
+		return "Antigravity"
 	default:
 		return titleize(name)
 	}
@@ -243,6 +253,12 @@ func displayKind(kind string) string {
 		return "Logs"
 	case "session_store":
 		return "Sessions"
+	case "archived_sessions":
+		return "Archived sessions"
+	case "session_index":
+		return "Session index"
+	case "session_db":
+		return "Session database"
 	case "config":
 		return "Config"
 	case "env_file":
@@ -295,6 +311,22 @@ func displayKind(kind string) string {
 		return "CLI link"
 	case "auth_key":
 		return "Auth key"
+	case "desktop_session_storage":
+		return "App session storage"
+	case "desktop_local_storage":
+		return "App local storage"
+	case "desktop_indexeddb":
+		return "App IndexedDB"
+	case "transcripts":
+		return "Transcripts"
+	case "project_sessions":
+		return "Project sessions"
+	case "prompt_history":
+		return "Prompt history"
+	case "global_chat_state":
+		return "Global chat state"
+	case "workspace_chat_state":
+		return "Workspace chat state"
 	default:
 		return titleize(kind)
 	}
