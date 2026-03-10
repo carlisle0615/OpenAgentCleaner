@@ -89,7 +89,7 @@ func assistantAnalyzeSummary(assistants []string) ([]assistantSummary, error) {
 		go func(index int, assistant string) {
 			defer wg.Done()
 
-			leftovers, err := discoverAssistantLeftovers(assistant)
+			leftovers, err := discoverAssistantLeftoversCached(assistant)
 			if err != nil {
 				select {
 				case errCh <- err:
@@ -103,7 +103,7 @@ func assistantAnalyzeSummary(assistants []string) ([]assistantSummary, error) {
 				LeftoverCount: len(leftovers),
 			}
 			if assistantSupportsSessions(assistant) {
-				sessions, err := discoverAssistantSessions(assistant)
+				sessions, err := discoverAssistantSessionsCached(assistant)
 				if err != nil {
 					select {
 					case errCh <- err:

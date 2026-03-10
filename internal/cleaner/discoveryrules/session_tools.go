@@ -1,8 +1,8 @@
-package cleaner
+package discoveryrules
 
 import "path/filepath"
 
-func discoverCodexDesktop(home string) []Candidate {
+func DiscoverCodexDesktop(home string) []Candidate {
 	out := []Candidate{}
 	out = appendCandidateIfExists(out, Candidate{
 		Assistant: "codex",
@@ -21,7 +21,7 @@ func discoverCodexDesktop(home string) []Candidate {
 	return out
 }
 
-func discoverCodexCLI(home string) []Candidate {
+func DiscoverCodexCLI(home string) []Candidate {
 	root := filepath.Join(home, ".codex")
 	out := []Candidate{}
 	out = appendCandidateIfExists(out, Candidate{
@@ -50,7 +50,7 @@ func discoverCodexCLI(home string) []Candidate {
 	return out
 }
 
-func discoverClaudeCode(home string) []Candidate {
+func DiscoverClaudeCode(home string) []Candidate {
 	root := filepath.Join(home, ".claude")
 	out := []Candidate{}
 	out = appendCandidateIfExists(out, Candidate{
@@ -98,7 +98,7 @@ func discoverClaudeCode(home string) []Candidate {
 	return out
 }
 
-func discoverCursor(home string) []Candidate {
+func DiscoverCursor(home string) []Candidate {
 	appSupport := filepath.Join(home, "Library", "Application Support", "Cursor", "User")
 	out := []Candidate{}
 	out = appendGlobCandidates(out, "cursor", filepath.Join(appSupport, "globalStorage", "state.vscdb*"), "global_chat_state", SafetyConfirm, "Cursor keeps global composer/chat state in VS Code SQLite storage.")
@@ -113,7 +113,7 @@ func discoverCursor(home string) []Candidate {
 	return out
 }
 
-func discoverAntigravity(home string) []Candidate {
+func DiscoverAntigravity(home string) []Candidate {
 	appSupport := filepath.Join(home, "Library", "Application Support", "Antigravity", "User")
 	out := []Candidate{}
 	out = appendGlobCandidates(out, "antigravity", filepath.Join(appSupport, "globalStorage", "state.vscdb*"), "global_chat_state", SafetyConfirm, "Antigravity keeps global chat state in VS Code SQLite storage.")

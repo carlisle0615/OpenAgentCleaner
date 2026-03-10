@@ -98,7 +98,7 @@
 ## CI Contract
 
 - The default PR / push gate includes only:
-  - Go format check (currently `gofmt -w main.go internal/cleaner/*.go && git diff --exit-code`)
+  - Go format check (currently `gofmt -w $(find . -name '*.go' -not -path './vendor/*' -print) && git diff --exit-code`)
   - Build check (`make build`)
   - Go tests (`make test`)
 - Any check that depends on a real user home directory, external accounts, or extra local permissions must live in `tests/regression/manual/` and must not block mainline merges

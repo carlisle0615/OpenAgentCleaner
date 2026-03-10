@@ -4,11 +4,12 @@ BINDIR ?= $(PREFIX)/bin
 BUILDDIR ?= $(CURDIR)/bin
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || printf 'dev')
 LDFLAGS ?= -s -w -X github.com/carlisle0615/OpenAgentCleaner/internal/cleaner.Version=$(VERSION)
+GOFMT_TARGETS := $(shell find . -name '*.go' -not -path './vendor/*' -print)
 
 .PHONY: build fmt install install-release test uninstall verify-fast verify-all hooks protect-main
 
 fmt:
-	gofmt -w main.go internal/cleaner/*.go
+	gofmt -w $(GOFMT_TARGETS)
 
 build:
 	mkdir -p "$(BUILDDIR)"

@@ -1,11 +1,11 @@
-package cleaner
+package discoveryrules
 
 import (
 	"os"
 	"path/filepath"
 )
 
-func discoverOllama(home string) []Candidate {
+func DiscoverOllama(home string) []Candidate {
 	baseDir := filepath.Join(home, ".ollama")
 	modelsDir := cleanPath(os.Getenv("OLLAMA_MODELS"))
 	if modelsDir == "." || modelsDir == "" {

@@ -1,4 +1,4 @@
-package cleaner
+package sessionstore
 
 import (
 	"database/sql"
@@ -46,19 +46,7 @@ type cursorSession struct {
 	IsArchived    bool
 }
 
-func newCursorConversationProvider() conversationProvider {
-	return conversationProvider{
-		discover: discoverCursorConversationSessions,
-		preview:  previewCursorConversationSession,
-		delete:   deleteCursorConversationSessions,
-		ignoredCandidateKinds: map[string]struct{}{
-			"global_chat_state":    {},
-			"workspace_chat_state": {},
-		},
-	}
-}
-
-func discoverCursorConversationSessions() ([]ConversationSession, error) {
+func DiscoverCursorConversationSessions() ([]ConversationSession, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
@@ -69,7 +57,7 @@ func discoverCursorConversationSessions() ([]ConversationSession, error) {
 	}
 	verbosef("reading Cursor session state from %s", dbPath)
 
-	db, err := openSQLiteDB(dbPath)
+	db, err := OpenSQLiteDB(dbPath)
 	if err != nil {
 		return nil, err
 	}
@@ -189,12 +177,12 @@ func firstCursorBubbleText(db *sql.DB, composerID string, bubbleIDs []string) (s
 	return "", nil
 }
 
-func previewCursorConversationSession(session ConversationSession) (string, error) {
+func PreviewCursorConversationSession(session ConversationSession) (string, error) {
 	stored, ok := session.ProviderData.(cursorSession)
 	if !ok {
 		return "", errUnexpectedSessionProviderData("cursor", session.ProviderData)
 	}
-	db, err := openSQLiteDB(stored.DBPath)
+	db, err := OpenSQLiteDB(stored.DBPath)
 	if err != nil {
 		return "", err
 	}
@@ -240,7 +228,7 @@ func readCursorBubble(db *sql.DB, composerID, bubbleID string) (string, string, 
 	return strings.TrimSpace(bubble.Text), role, nil
 }
 
-func deleteCursorConversationSessions(sessions []ConversationSession) error {
+func DeleteCursorConversationSessions(sessions []ConversationSession) error {
 	grouped := map[string][]cursorSession{}
 	for _, session := range sessions {
 		stored, ok := session.ProviderData.(cursorSession)
@@ -251,7 +239,7 @@ func deleteCursorConversationSessions(sessions []ConversationSession) error {
 	}
 
 	for dbPath, batch := range grouped {
-		db, err := openSQLiteDB(dbPath)
+		db, err := OpenSQLiteDB(dbPath)
 		if err != nil {
 			return err
 		}

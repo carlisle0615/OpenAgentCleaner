@@ -1,89 +1,71 @@
 package cleaner
 
 import (
+	"database/sql"
 	"fmt"
-	"sort"
-	"strings"
 	"time"
+
+	"github.com/carlisle0615/OpenAgentCleaner/internal/cleaner/sessionstore"
 )
 
-type ConversationSession struct {
-	Assistant    string
-	ID           string
-	Title        string
-	Subtitle     string
-	Source       string
-	Path         string
-	StartedAt    time.Time
-	UpdatedAt    time.Time
-	SizeBytes    int64
-	MessageCount int
-	InputTokens  int64
-	OutputTokens int64
-	TotalTokens  int64
-	Deletable    bool
-	DeleteNote   string
-	ProviderData any
-}
-
-type conversationProvider struct {
-	discover              func() ([]ConversationSession, error)
-	preview               func(ConversationSession) (string, error)
-	delete                func([]ConversationSession) error
-	ignoredCandidateKinds map[string]struct{}
-}
-
-func conversationProviderForAssistant(assistant string) (conversationProvider, bool) {
-	switch assistant {
-	case "openclaw":
-		return newOpenClawConversationProvider(), true
-	case "codex":
-		return newCodexConversationProvider("codex"), true
-	case "codex-cli":
-		return newCodexConversationProvider("codex-cli"), true
-	case "claudecode":
-		return newClaudeCodeConversationProvider(), true
-	case "cursor":
-		return newCursorConversationProvider(), true
-	case "antigravity":
-		return newAntigravityConversationProvider(), true
-	default:
-		return conversationProvider{}, false
-	}
-}
+type ConversationSession = sessionstore.ConversationSession
 
 func assistantSupportsSessions(assistant string) bool {
-	_, ok := conversationProviderForAssistant(assistant)
-	return ok
+	switch assistant {
+	case "openclaw", "codex", "codex-cli", "claudecode", "cursor", "antigravity":
+		return true
+	default:
+		return false
+	}
 }
 
 func assistantSupportsSessionDelete(assistant string) bool {
-	provider, ok := conversationProviderForAssistant(assistant)
-	return ok && provider.delete != nil
+	switch assistant {
+	case "openclaw", "codex", "codex-cli", "claudecode", "cursor":
+		return true
+	default:
+		return false
+	}
 }
 
 func discoverAssistantSessions(assistant string) ([]ConversationSession, error) {
-	provider, ok := conversationProviderForAssistant(assistant)
-	if !ok {
+	if !assistantSupportsSessions(assistant) {
 		return nil, nil
 	}
 	verbosef("scanning conversation sessions for %s", displayAssistant(assistant))
-	sessions, err := provider.discover()
-	if err != nil {
-		return nil, err
+	switch assistant {
+	case "openclaw":
+		return discoverOpenClawConversationSessions()
+	case "codex":
+		return sessionstore.DiscoverCodexConversationSessions("codex")
+	case "codex-cli":
+		return sessionstore.DiscoverCodexConversationSessions("codex-cli")
+	case "claudecode":
+		return sessionstore.DiscoverClaudeCodeConversationSessions()
+	case "cursor":
+		return sessionstore.DiscoverCursorConversationSessions()
+	case "antigravity":
+		return sessionstore.DiscoverAntigravityConversationSessions()
+	default:
+		return nil, nil
 	}
-	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].SortTime().After(sessions[j].SortTime())
-	})
-	return sessions, nil
 }
 
 func previewConversationSession(session ConversationSession) (string, error) {
-	provider, ok := conversationProviderForAssistant(session.Assistant)
-	if !ok || provider.preview == nil {
+	switch session.Assistant {
+	case "openclaw":
+		return previewOpenClawConversationSession(session)
+	case "codex", "codex-cli":
+		return sessionstore.PreviewCodexConversationSession(session)
+	case "claudecode":
+		return sessionstore.PreviewClaudeCodeConversationSession(session)
+	case "cursor":
+		return sessionstore.PreviewCursorConversationSession(session)
+	case "antigravity":
+		return sessionstore.PreviewAntigravityConversationSession(session)
+	default:
 		return "", fmt.Errorf("%s sessions do not support previews", displayAssistant(session.Assistant))
 	}
-	return provider.preview(session)
 }
 
 func deleteConversationSessions(sessions []ConversationSession) error {
@@ -100,23 +82,39 @@ func deleteConversationSessions(sessions []ConversationSession) error {
 	}
 
 	for assistant, batch := range grouped {
-		provider, ok := conversationProviderForAssistant(assistant)
-		if !ok || provider.delete == nil {
+		switch assistant {
+		case "openclaw":
+			if err := deleteOpenClawConversationSessions(batch); err != nil {
+				return err
+			}
+		case "codex", "codex-cli":
+			if err := sessionstore.DeleteCodexConversationSessions(batch); err != nil {
+				return err
+			}
+		case "claudecode":
+			if err := sessionstore.DeleteClaudeCodeConversationSessions(batch); err != nil {
+				return err
+			}
+		case "cursor":
+			if err := sessionstore.DeleteCursorConversationSessions(batch); err != nil {
+				return err
+			}
+		default:
 			return fmt.Errorf("%s sessions do not support deletion", displayAssistant(assistant))
-		}
-		if err := provider.delete(batch); err != nil {
-			return err
 		}
 	}
 	return nil
 }
 
 func sessionIgnoredCandidateKinds(assistant string) map[string]struct{} {
-	provider, ok := conversationProviderForAssistant(assistant)
-	if !ok {
-		return nil
+	switch assistant {
+	case "openclaw":
+		return map[string]struct{}{
+			"session_store": {},
+		}
+	default:
+		return sessionstore.IgnoredCandidateKinds(assistant)
 	}
-	return provider.ignoredCandidateKinds
 }
 
 func filterSessionsBefore(sessions []ConversationSession, cutoff time.Time) []ConversationSession {
@@ -129,39 +127,8 @@ func filterSessionsBefore(sessions []ConversationSession, cutoff time.Time) []Co
 	return out
 }
 
-func (s ConversationSession) SortTime() time.Time {
-	if !s.UpdatedAt.IsZero() {
-		return s.UpdatedAt
-	}
-	return s.StartedAt
-}
-
-func (s ConversationSession) DisplayLabel() string {
-	switch {
-	case strings.TrimSpace(s.Title) != "":
-		return s.Title
-	case strings.TrimSpace(s.Subtitle) != "":
-		return s.Subtitle
-	case strings.TrimSpace(s.Source) != "":
-		return s.Source
-	default:
-		return s.ID
-	}
-}
-
-func (s ConversationSession) ShortLabel() string {
-	label := s.DisplayLabel()
-	if strings.TrimSpace(s.Subtitle) != "" && s.Subtitle != s.Title {
-		label = label + " · " + s.Subtitle
-	}
-	return trimForDisplay(label, 64)
-}
-
-func (s ConversationSession) DeleteExplanation() string {
-	if strings.TrimSpace(s.DeleteNote) == "" {
-		return "index cleanup is not implemented for this session format"
-	}
-	return s.DeleteNote
+func errUnexpectedSessionProviderData(assistant string, value any) error {
+	return fmt.Errorf("%s session provider data type mismatch: %T", assistant, value)
 }
 
 func unixTimeAuto(raw int64) time.Time {
@@ -172,4 +139,12 @@ func unixTimeAuto(raw int64) time.Time {
 		return time.UnixMilli(raw)
 	}
 	return time.Unix(raw, 0)
+}
+
+func openSQLiteDB(path string) (*sql.DB, error) {
+	return sessionstore.OpenSQLiteDB(path)
+}
+
+func classifyCodexAssistantFromSource(source string) (string, bool) {
+	return sessionstore.ClassifyCodexAssistantFromSource(source)
 }

@@ -1,4 +1,4 @@
-package cleaner
+package sessionstore
 
 import (
 	"bufio"
@@ -68,23 +68,7 @@ type codexEventPayload struct {
 	Message string `json:"message"`
 }
 
-func newCodexConversationProvider(assistant string) conversationProvider {
-	return conversationProvider{
-		discover: func() ([]ConversationSession, error) {
-			return discoverCodexConversationSessions(assistant)
-		},
-		preview: previewCodexConversationSession,
-		delete:  deleteCodexConversationSessions,
-		ignoredCandidateKinds: map[string]struct{}{
-			"session_store":     {},
-			"archived_sessions": {},
-			"session_index":     {},
-			"session_db":        {},
-		},
-	}
-}
-
-func discoverCodexConversationSessions(targetAssistant string) ([]ConversationSession, error) {
+func DiscoverCodexConversationSessions(targetAssistant string) ([]ConversationSession, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
@@ -97,19 +81,16 @@ func discoverCodexConversationSessions(targetAssistant string) ([]ConversationSe
 	if dbPath == "" || !pathExists(dbPath) {
 		return nil, nil
 	}
-	verbosef("reading %s session database: %s", displayAssistant(targetAssistant), dbPath)
+	verbosef("reading %s session database: %s", displayAssistantName(targetAssistant), dbPath)
 
-	db, err := openSQLiteDB(dbPath)
+	db, err := OpenSQLiteDB(dbPath)
 	if err != nil {
 		return nil, err
 	}
 	defer db.Close()
 
-	rows, err := db.Query(`
-		SELECT id, rollout_path, created_at, updated_at, source, title, tokens_used, first_user_message
-		FROM threads
-		ORDER BY updated_at DESC, id DESC
-	`)
+	query, args := codexThreadsQuery(targetAssistant)
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -135,11 +116,17 @@ func discoverCodexConversationSessions(targetAssistant string) ([]ConversationSe
 			continue
 		}
 
-		rolloutMeta, messageCount, err := scanCodexRolloutMetadata(row.RolloutPath)
-		if err != nil {
-			return nil, err
+		assistant, known := ClassifyCodexAssistantFromSource(row.Source)
+		rolloutMeta := codexStoredSession{}
+		messageCount := 0
+		if !known {
+			var err error
+			rolloutMeta, messageCount, err = scanCodexRolloutMetadata(row.RolloutPath)
+			if err != nil {
+				return nil, err
+			}
+			assistant = classifyCodexAssistant(row.Source, rolloutMeta.Originator)
 		}
-		assistant := classifyCodexAssistant(row.Source, rolloutMeta.Originator)
 		if assistant != targetAssistant {
 			continue
 		}
@@ -208,7 +195,7 @@ func discoverCodexConversationSessions(targetAssistant string) ([]ConversationSe
 	return out, nil
 }
 
-func previewCodexConversationSession(session ConversationSession) (string, error) {
+func PreviewCodexConversationSession(session ConversationSession) (string, error) {
 	stored, ok := session.ProviderData.(codexStoredSession)
 	if !ok {
 		return "", errUnexpectedSessionProviderData("codex", session.ProviderData)
@@ -216,7 +203,7 @@ func previewCodexConversationSession(session ConversationSession) (string, error
 	return previewCodexRollout(stored)
 }
 
-func deleteCodexConversationSessions(sessions []ConversationSession) error {
+func DeleteCodexConversationSessions(sessions []ConversationSession) error {
 	grouped := map[string][]codexStoredSession{}
 	for _, session := range sessions {
 		stored, ok := session.ProviderData.(codexStoredSession)
@@ -283,7 +270,7 @@ func deleteCodexConversationBatch(dbPath string, batch []codexStoredSession) err
 		return cause
 	}
 
-	db, err := openSQLiteDB(dbPath)
+	db, err := OpenSQLiteDB(dbPath)
 	if err != nil {
 		_ = restoreStagedDeletes(stagedRollouts)
 		_ = cleanupCopiedBackups(indexBackups)
@@ -518,14 +505,49 @@ func collectCodexResponseText(payload codexResponseItemPayload) string {
 }
 
 func classifyCodexAssistant(source, originator string) string {
+	if assistant, ok := ClassifyCodexAssistantFromSource(source); ok {
+		return assistant
+	}
 	normalizedOriginator := strings.ToLower(strings.TrimSpace(originator))
-	normalizedSource := strings.ToLower(strings.TrimSpace(source))
-	if normalizedSource == "vscode" ||
-		strings.Contains(normalizedOriginator, "desktop") ||
+	if strings.Contains(normalizedOriginator, "desktop") ||
 		strings.Contains(normalizedOriginator, "vscode") {
 		return "codex"
 	}
 	return "codex-cli"
+}
+
+func ClassifyCodexAssistantFromSource(source string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(source)) {
+	case "vscode":
+		return "codex", true
+	case "cli", "exec", "mcp":
+		return "codex-cli", true
+	default:
+		return "", false
+	}
+}
+
+func codexThreadsQuery(targetAssistant string) (string, []any) {
+	base := `
+		SELECT id, rollout_path, created_at, updated_at, source, title, tokens_used, first_user_message
+		FROM threads
+	`
+	switch targetAssistant {
+	case "codex":
+		return base + `
+			WHERE source IN ('vscode', 'unknown')
+			ORDER BY updated_at DESC, id DESC
+		`, nil
+	case "codex-cli":
+		return base + `
+			WHERE source != 'vscode'
+			ORDER BY updated_at DESC, id DESC
+		`, nil
+	default:
+		return base + `
+			ORDER BY updated_at DESC, id DESC
+		`, nil
+	}
 }
 
 func codexSessionSubtitle(session codexStoredSession) string {
@@ -548,25 +570,6 @@ func codexSessionSource(session codexStoredSession) string {
 		parts = append(parts, session.Source)
 	}
 	return strings.Join(uniqueStrings(parts), " · ")
-}
-
-func latestMatchingPath(pattern string) (string, error) {
-	matches, err := filepath.Glob(pattern)
-	if err != nil || len(matches) == 0 {
-		return "", err
-	}
-	sort.Strings(matches)
-	return matches[len(matches)-1], nil
-}
-
-func firstNonEmptyLine(value string) string {
-	for _, line := range strings.Split(value, "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			return line
-		}
-	}
-	return ""
 }
 
 func sqlDeleteIn(prefix string, ids []string) (string, []any) {

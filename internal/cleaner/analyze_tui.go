@@ -90,7 +90,7 @@ type analyzeModel struct {
 	previewSessionID   string
 }
 
-func runAnalyzeTUI(assistants []string, before time.Time, stdout, stderr io.Writer) error {
+func runAnalyzeTUILegacy(assistants []string, before time.Time, stdout, stderr io.Writer) error {
 	model, err := newAnalyzeModel(assistants, before)
 	if err != nil {
 		return err
@@ -113,6 +113,7 @@ func runAnalyzeTUI(assistants []string, before time.Time, stdout, stderr io.Writ
 }
 
 func newAnalyzeModel(assistants []string, before time.Time) (analyzeModel, error) {
+	resetAnalyzeDiscoveryCache()
 	m := analyzeModel{
 		styles:        newAnalyzeStyles(),
 		assistants:    assistants,
@@ -446,6 +447,7 @@ func (m *analyzeModel) executeConfirm() error {
 		if err := deleteConversationSessions([]ConversationSession{m.confirmSession}); err != nil {
 			return err
 		}
+		invalidateAssistantSessionsCache(m.activeAssistant)
 		m.status = "Conversation deleted."
 		return m.reloadSessions()
 	case confirmDeleteSessionsBefore:
@@ -457,6 +459,7 @@ func (m *analyzeModel) executeConfirm() error {
 		if err := deleteConversationSessions(matches); err != nil {
 			return err
 		}
+		invalidateAssistantSessionsCache(m.activeAssistant)
 		m.sessionBefore = m.confirmCutoff
 		m.status = fmt.Sprintf("Removed %d older conversation(s).", len(matches))
 		return m.reloadSessions()
@@ -464,6 +467,7 @@ func (m *analyzeModel) executeConfirm() error {
 		if err := deletePath(m.confirmItem.Path); err != nil {
 			return err
 		}
+		invalidateAssistantLeftoversCache(m.activeAssistant)
 		m.status = "Item deleted."
 		return m.reloadCandidates(m.activeAssistant)
 	}
@@ -524,7 +528,7 @@ func (m analyzeModel) atRoot() bool {
 }
 
 func (m *analyzeModel) reloadCandidates(assistant string) error {
-	candidates, err := discoverAssistantLeftovers(assistant)
+	candidates, err := discoverAssistantLeftoversCached(assistant)
 	if err != nil {
 		return err
 	}
@@ -542,7 +546,7 @@ func (m *analyzeModel) reloadCandidates(assistant string) error {
 }
 
 func (m *analyzeModel) reloadSessions() error {
-	sessions, err := discoverAssistantSessions(m.activeAssistant)
+	sessions, err := discoverAssistantSessionsCached(m.activeAssistant)
 	if err != nil {
 		return err
 	}
@@ -560,7 +564,7 @@ func (m *analyzeModel) reloadSessions() error {
 }
 
 func (m analyzeModel) sessionsSource() []ConversationSession {
-	sessions, _ := discoverAssistantSessions(m.activeAssistant)
+	sessions, _ := discoverAssistantSessionsCached(m.activeAssistant)
 	return sessions
 }
 
@@ -744,9 +748,9 @@ func (m analyzeModel) renderAssistantList() string {
 			detail = fmt.Sprintf("%d conversations, %d others", item.SessionCount, item.LeftoverCount)
 		}
 
-		row := fmt.Sprintf("%-14s %s", label, m.styles.muted.Render(detail))
+		row := displayFillRight(label, 14) + " " + m.styles.muted.Render(detail)
 		if i == m.assistantIndex {
-			row = m.styles.selected.Render(fmt.Sprintf("❯ %-12s %s", label, detail))
+			row = m.styles.selected.Render("❯ " + displayFillRight(label, 12) + " " + detail)
 		} else {
 			row = fmt.Sprintf("  %s", row)
 		}
@@ -820,19 +824,28 @@ func (m analyzeModel) renderSessionsList() string {
 		lines = append(lines, m.styles.muted.Render("No conversations match the current filter."))
 		return strings.Join(lines, "\n")
 	}
+
 	labelWidth := m.sessionListLabelWidth()
-	for i, session := range m.sessions {
+	start, end := visibleWindow(len(m.sessions), m.sessionIndex, m.sessionListVisibleCount())
+	if start > 0 {
+		lines = append(lines, m.styles.muted.Render(fmt.Sprintf("  ... %d older conversation(s)", start)))
+	}
+	for i := start; i < end; i++ {
+		session := m.sessions[i]
 		dateStr := session.SortTime().Format("2006-01-02")
 		sizeStr := formatBytes(session.SizeBytes)
 		labelStr := trimForDisplay(session.ShortLabel(), labelWidth)
 
-		row := fmt.Sprintf("%-10s %-8s %s", m.styles.muted.Render(dateStr), sizeStr, m.styles.muted.Render(labelStr))
+		row := m.styles.muted.Render(displayFillRight(dateStr, 10)) + " " + m.styles.muted.Render(displayFillRight(sizeStr, 8)) + " " + m.styles.muted.Render(labelStr)
 		if i == m.sessionIndex {
-			row = m.styles.selected.Render(fmt.Sprintf("❯ %-8s %-8s %s", dateStr, sizeStr, labelStr))
+			row = m.styles.selected.Render("❯ " + displayFillRight(dateStr, 8) + " " + displayFillRight(sizeStr, 8) + " " + labelStr)
 		} else {
 			row = fmt.Sprintf("  %s", row)
 		}
 		lines = append(lines, row)
+	}
+	if end < len(m.sessions) {
+		lines = append(lines, m.styles.muted.Render(fmt.Sprintf("  ... %d newer conversation(s)", len(m.sessions)-end)))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -982,6 +995,14 @@ func (m analyzeModel) sessionPreviewLineLimit() int {
 	return limit
 }
 
+func (m analyzeModel) sessionListVisibleCount() int {
+	visible := m.height - 10
+	if visible < 8 {
+		visible = 8
+	}
+	return visible
+}
+
 func (m analyzeModel) detailPaneWidth() int {
 	contentWidth := m.width - 4
 	detailWidth := contentWidth - m.sessionListPaneWidth() - 4
@@ -1010,22 +1031,75 @@ func wrapDisplayText(value string, width int) []string {
 	return strings.Split(wrapped, "\n")
 }
 
+func visibleWindow(total, index, capacity int) (int, int) {
+	if total <= 0 {
+		return 0, 0
+	}
+	if capacity <= 0 || total <= capacity {
+		return 0, total
+	}
+	if index < 0 {
+		index = 0
+	}
+	if index >= total {
+		index = total - 1
+	}
+
+	start := index - capacity/2
+	if start < 0 {
+		start = 0
+	}
+	end := start + capacity
+	if end > total {
+		end = total
+		start = end - capacity
+	}
+	if start < 0 {
+		start = 0
+	}
+	return start, end
+}
+
+func displayFillRight(value string, width int) string {
+	current := runewidth.StringWidth(value)
+	if current >= width {
+		return value
+	}
+	return value + strings.Repeat(" ", width-current)
+}
+
+func displayFillLeft(value string, width int) string {
+	current := runewidth.StringWidth(value)
+	if current >= width {
+		return value
+	}
+	return strings.Repeat(" ", width-current) + value
+}
+
 func (m analyzeModel) renderCandidateList() string {
 	lines := []string{m.styles.header.Render(displayAssistant(m.activeAssistant) + " items"), ""}
 	if len(m.candidates) == 0 {
 		lines = append(lines, m.styles.muted.Render("No matching items remain."))
 		return strings.Join(lines, "\n")
 	}
-	for i, candidate := range m.candidates {
+	start, end := visibleWindow(len(m.candidates), m.candidateIndex, m.sessionListVisibleCount())
+	if start > 0 {
+		lines = append(lines, m.styles.muted.Render(fmt.Sprintf("  ... %d earlier item(s)", start)))
+	}
+	for i := start; i < end; i++ {
+		candidate := m.candidates[i]
 		safety := displaySafety(candidate.Safety)
 
-		row := fmt.Sprintf("%-16s %-7s %8s", trimForDisplay(displayKind(candidate.Kind), 16), safety, formatBytes(candidate.SizeBytes))
+		row := displayFillRight(trimForDisplay(displayKind(candidate.Kind), 16), 16) + " " + displayFillRight(safety, 7) + " " + displayFillLeft(formatBytes(candidate.SizeBytes), 8)
 		if i == m.candidateIndex {
 			row = m.styles.selected.Render(fmt.Sprintf("❯ %s", row))
 		} else {
 			row = fmt.Sprintf("  %s", row)
 		}
 		lines = append(lines, row)
+	}
+	if end < len(m.candidates) {
+		lines = append(lines, m.styles.muted.Render(fmt.Sprintf("  ... %d later item(s)", len(m.candidates)-end)))
 	}
 	return strings.Join(lines, "\n")
 }

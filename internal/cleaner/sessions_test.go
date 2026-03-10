@@ -102,6 +102,63 @@ func TestCodexConversationSessionsAndDelete(t *testing.T) {
 	}
 }
 
+func TestClassifyCodexAssistantFromSource(t *testing.T) {
+	tests := []struct {
+		source string
+		want   string
+		ok     bool
+	}{
+		{source: "vscode", want: "codex", ok: true},
+		{source: "cli", want: "codex-cli", ok: true},
+		{source: "exec", want: "codex-cli", ok: true},
+		{source: "mcp", want: "codex-cli", ok: true},
+		{source: "unknown", want: "", ok: false},
+		{source: "", want: "", ok: false},
+	}
+
+	for _, tt := range tests {
+		got, ok := classifyCodexAssistantFromSource(tt.source)
+		if got != tt.want || ok != tt.ok {
+			t.Fatalf("classifyCodexAssistantFromSource(%q) = %q, %t", tt.source, got, ok)
+		}
+	}
+}
+
+func TestCodexConversationSessionsFallbackToRolloutForUnknownSource(t *testing.T) {
+	home := setTestHome(t)
+	root := filepath.Join(home, ".codex")
+	desktopRollout := filepath.Join(root, "sessions", "2026", "03", "09", "desktop-unknown.jsonl")
+	writeTestFile(t, desktopRollout, strings.Join([]string{
+		`{"type":"session_meta","payload":{"timestamp":"2026-03-09T10:00:00Z","originator":"Codex Desktop"}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Desktop answer"}]}}`,
+	}, "\n")+"\n")
+
+	dbPath := filepath.Join(root, "state_5.sqlite")
+	db := createSQLiteDB(t, dbPath)
+	mustExec(t, db, `CREATE TABLE threads (
+		id TEXT PRIMARY KEY,
+		rollout_path TEXT NOT NULL,
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL,
+		source TEXT NOT NULL,
+		title TEXT NOT NULL,
+		tokens_used INTEGER NOT NULL DEFAULT 0,
+		first_user_message TEXT NOT NULL DEFAULT ''
+	)`)
+	mustExec(t, db, `INSERT INTO threads (id, rollout_path, created_at, updated_at, source, title, tokens_used, first_user_message)
+		VALUES (?, ?, 1741514400000, 1741514400000, 'unknown', 'Desktop thread', 10, 'desktop prompt')`,
+		"desktop-thread", desktopRollout)
+	db.Close()
+
+	sessions, err := discoverAssistantSessions("codex")
+	if err != nil {
+		t.Fatalf("discoverAssistantSessions(codex unknown) err = %v", err)
+	}
+	if len(sessions) != 1 || sessions[0].Title != "Desktop thread" {
+		t.Fatalf("codex unknown-source sessions = %#v", sessions)
+	}
+}
+
 func TestClaudeCodeConversationSessionsAndDelete(t *testing.T) {
 	home := setTestHome(t)
 	projectDir := filepath.Join(home, ".claude", "projects", "project-a")
@@ -162,22 +219,23 @@ func TestClaudeCodeConversationDeleteRollsBackOnIndexFailure(t *testing.T) {
 	indexPath := filepath.Join(projectDir, "sessions-index.json")
 
 	writeTestFile(t, projectPath, `{"type":"user","timestamp":"2026-03-09T10:00:00Z","sessionId":"session-a","message":{"role":"user","content":[{"type":"text","text":"Need a plan"}]}}`+"\n")
+	writeTestFile(t, indexPath, `{"version":1,"entries":[{"sessionId":"session-a","path":"session-a.jsonl"}]}`+"\n")
+
+	sessions, err := discoverAssistantSessions("claudecode")
+	if err != nil {
+		t.Fatalf("discoverAssistantSessions(claudecode) err = %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("claude sessions len = %d", len(sessions))
+	}
+
+	if err := os.Remove(indexPath); err != nil {
+		t.Fatalf("Remove(indexPath) err = %v", err)
+	}
 	if err := os.MkdirAll(indexPath, 0o755); err != nil {
 		t.Fatalf("MkdirAll(indexPath as dir) err = %v", err)
 	}
-
-	session := ConversationSession{
-		Assistant: "claudecode",
-		ID:        "session-a",
-		Path:      projectPath,
-		Deletable: true,
-		ProviderData: claudeCodeSession{
-			SessionID:  "session-a",
-			Path:       projectPath,
-			ProjectDir: projectDir,
-		},
-	}
-	if err := deleteConversationSessions([]ConversationSession{session}); err == nil {
+	if err := deleteConversationSessions([]ConversationSession{sessions[0]}); err == nil {
 		t.Fatal("deleteConversationSessions(claudecode) should fail when sessions-index.json is invalid")
 	}
 	if !pathExists(projectPath) {

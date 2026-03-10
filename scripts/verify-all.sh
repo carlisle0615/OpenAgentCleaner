@@ -7,7 +7,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 echo "[verify-all] format"
-UNFORMATTED="$(gofmt -l main.go internal/cleaner/*.go)"
+UNFORMATTED="$(gofmt -l $(find . -name '*.go' -not -path './vendor/*' -print))"
 if [[ -n "$UNFORMATTED" ]]; then
   echo "$UNFORMATTED"
   echo "Go files are not formatted. Run: make fmt"

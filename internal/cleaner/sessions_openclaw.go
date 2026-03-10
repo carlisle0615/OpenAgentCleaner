@@ -1,18 +1,5 @@
 package cleaner
 
-import "fmt"
-
-func newOpenClawConversationProvider() conversationProvider {
-	return conversationProvider{
-		discover: discoverOpenClawConversationSessions,
-		preview:  previewOpenClawConversationSession,
-		delete:   deleteOpenClawConversationSessions,
-		ignoredCandidateKinds: map[string]struct{}{
-			"session_store": {},
-		},
-	}
-}
-
 func discoverOpenClawConversationSessions() ([]ConversationSession, error) {
 	sessions, err := discoverOpenClawSessions()
 	if err != nil {
@@ -59,8 +46,4 @@ func deleteOpenClawConversationSessions(sessions []ConversationSession) error {
 		batch = append(batch, value)
 	}
 	return deleteOpenClawSessions(batch)
-}
-
-func errUnexpectedSessionProviderData(assistant string, value any) error {
-	return fmt.Errorf("%s session provider data type mismatch: %T", assistant, value)
 }
