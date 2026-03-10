@@ -16,8 +16,9 @@
 - `internal/cleaner/analyze.go`
 - `internal/cleaner/analyze_cache.go`
 - `internal/cleaner/analyze_tui.go`
+- `internal/cleaner/analyze_tui_tview.go`
 - `internal/cleaner/discovery.go`
-- `internal/cleaner/discovery_session_tools.go`
+- `internal/cleaner/discoveryrules/*.go`
 - `internal/cleaner/openclaw_sessions.go`
 - `internal/cleaner/session_delete_tx.go`
 - `internal/cleaner/sessions.go`
@@ -136,6 +137,15 @@
     - root `internal/cleaner/sessions.go` now acts as a thin wrapper surface for analyze and deletion flows
     - OpenClaw session parsing/deletion stays in the root package because it still shares helper/test surface with the main cleaner package
     - format/verification scripts now recurse through all Go files so the new subdirectory is covered by default CI-safe validation
+  - Follow-up discovery structure cleanup on 2026-03-10:
+    - moved assistant-specific leftover discovery rules into `internal/cleaner/discoveryrules/`
+    - root `internal/cleaner/discovery.go` now keeps aggregation, root-level filesystem helpers, and compatibility wrappers used by older tests/OpenClaw session parsing
+    - this reduces the flat root package further without changing the external `discoverCandidates` flow
+  - Follow-up analyze UI framework switch on 2026-03-10:
+    - `runAnalyzeTUI` now uses a tview implementation for interactive TTY sessions (`internal/cleaner/analyze_tui_tview.go`)
+    - legacy Bubble Tea implementation is retained as a non-TTY fallback (`runAnalyzeTUILegacy`) to keep existing tests and scripted execution deterministic
+    - date filter / bulk-delete / delete confirm dialogs are now tview modal pages instead of hand-drawn overlay strings
+    - added `tview` and `tcell` dependencies in `go.mod`
 
 ## Validation Notes
 

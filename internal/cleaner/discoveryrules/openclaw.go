@@ -1,13 +1,13 @@
-package cleaner
+package discoveryrules
 
 import (
 	"os"
 	"path/filepath"
 )
 
-func discoverOpenClaw(home string) []Candidate {
+func DiscoverOpenClaw(home string) []Candidate {
 	var out []Candidate
-	for _, root := range openClawStateRoots(home) {
+	for _, root := range OpenClawStateRoots(home) {
 		configPath := filepath.Join(root, "openclaw.json")
 		if explicitConfig := cleanPath(os.Getenv("OPENCLAW_CONFIG_PATH")); explicitConfig != "." && explicitConfig != "" {
 			configPath = explicitConfig
@@ -66,7 +66,7 @@ func discoverOpenClaw(home string) []Candidate {
 	return out
 }
 
-func isOpenClawStateRoot(path string) bool {
+func IsOpenClawStateRoot(path string) bool {
 	if !pathExists(path) {
 		return false
 	}
@@ -83,7 +83,7 @@ func isOpenClawStateRoot(path string) bool {
 	return false
 }
 
-func openClawStateRoots(home string) []string {
+func OpenClawStateRoots(home string) []string {
 	stateRoots := []string{}
 	if explicit := cleanPath(os.Getenv("OPENCLAW_STATE_DIR")); explicit != "." && explicit != "" {
 		stateRoots = append(stateRoots, explicit)
@@ -93,7 +93,7 @@ func openClawStateRoots(home string) []string {
 
 	if matches, _ := filepath.Glob(filepath.Join(home, ".openclaw-*")); len(matches) > 0 {
 		for _, match := range matches {
-			if isOpenClawStateRoot(match) {
+			if IsOpenClawStateRoot(match) {
 				stateRoots = append(stateRoots, match)
 			}
 		}

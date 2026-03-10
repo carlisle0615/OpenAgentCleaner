@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/carlisle0615/OpenAgentCleaner/internal/cleaner/discoveryrules"
 )
 
 func discoverCandidates(assistants []string) ([]Candidate, error) {
@@ -18,21 +20,21 @@ func discoverCandidates(assistants []string) ([]Candidate, error) {
 		verbosef("scanning leftover candidates for %s", displayAssistant(assistant))
 		switch assistant {
 		case "openclaw":
-			all = append(all, discoverOpenClaw(home)...)
+			all = append(all, convertDiscoveryCandidates(discoveryrules.DiscoverOpenClaw(home))...)
 		case "ironclaw":
-			all = append(all, discoverIronClaw(home)...)
+			all = append(all, convertDiscoveryCandidates(discoveryrules.DiscoverIronClaw(home))...)
 		case "ollama":
-			all = append(all, discoverOllama(home)...)
+			all = append(all, convertDiscoveryCandidates(discoveryrules.DiscoverOllama(home))...)
 		case "codex":
-			all = append(all, discoverCodexDesktop(home)...)
+			all = append(all, convertDiscoveryCandidates(discoveryrules.DiscoverCodexDesktop(home))...)
 		case "codex-cli":
-			all = append(all, discoverCodexCLI(home)...)
+			all = append(all, convertDiscoveryCandidates(discoveryrules.DiscoverCodexCLI(home))...)
 		case "claudecode":
-			all = append(all, discoverClaudeCode(home)...)
+			all = append(all, convertDiscoveryCandidates(discoveryrules.DiscoverClaudeCode(home))...)
 		case "cursor":
-			all = append(all, discoverCursor(home)...)
+			all = append(all, convertDiscoveryCandidates(discoveryrules.DiscoverCursor(home))...)
 		case "antigravity":
-			all = append(all, discoverAntigravity(home)...)
+			all = append(all, convertDiscoveryCandidates(discoveryrules.DiscoverAntigravity(home))...)
 		}
 	}
 
@@ -54,6 +56,61 @@ func discoverCandidates(assistants []string) ([]Candidate, error) {
 		return all[i].Path < all[j].Path
 	})
 	return all, nil
+}
+
+func convertDiscoveryCandidates(items []discoveryrules.Candidate) []Candidate {
+	out := make([]Candidate, 0, len(items))
+	for _, item := range items {
+		out = append(out, Candidate{
+			Assistant: item.Assistant,
+			Path:      item.Path,
+			Kind:      item.Kind,
+			Safety:    Safety(item.Safety),
+			Reason:    item.Reason,
+			Notes:     append([]string(nil), item.Notes...),
+		})
+	}
+	return out
+}
+
+func discoverOpenClaw(home string) []Candidate {
+	return convertDiscoveryCandidates(discoveryrules.DiscoverOpenClaw(home))
+}
+
+func discoverIronClaw(home string) []Candidate {
+	return convertDiscoveryCandidates(discoveryrules.DiscoverIronClaw(home))
+}
+
+func discoverOllama(home string) []Candidate {
+	return convertDiscoveryCandidates(discoveryrules.DiscoverOllama(home))
+}
+
+func discoverCodexDesktop(home string) []Candidate {
+	return convertDiscoveryCandidates(discoveryrules.DiscoverCodexDesktop(home))
+}
+
+func discoverCodexCLI(home string) []Candidate {
+	return convertDiscoveryCandidates(discoveryrules.DiscoverCodexCLI(home))
+}
+
+func discoverClaudeCode(home string) []Candidate {
+	return convertDiscoveryCandidates(discoveryrules.DiscoverClaudeCode(home))
+}
+
+func discoverCursor(home string) []Candidate {
+	return convertDiscoveryCandidates(discoveryrules.DiscoverCursor(home))
+}
+
+func discoverAntigravity(home string) []Candidate {
+	return convertDiscoveryCandidates(discoveryrules.DiscoverAntigravity(home))
+}
+
+func isOpenClawStateRoot(path string) bool {
+	return discoveryrules.IsOpenClawStateRoot(path)
+}
+
+func openClawStateRoots(home string) []string {
+	return discoveryrules.OpenClawStateRoots(home)
 }
 
 func appendCandidateIfExists(dst []Candidate, candidate Candidate) []Candidate {

@@ -21,11 +21,14 @@ Last updated: 2026-03-10
 - `internal/cleaner/`
   - `run.go`: command dispatch, flag parsing, interactive home menu, version/help output, main `scan` / `clean` flow
   - `analyze.go`: analyze command flag parsing and TUI bootstrap
-  - `analyze_tui.go`: Bubble Tea TUI for assistant browsing, cross-assistant conversation review, and item-level deletion
+  - `analyze_tui.go`: legacy Bubble Tea implementation retained for non-TTY fallback and test determinism
+  - `analyze_tui_tview.go`: tview-based analyze UI for interactive TTY runs, including modal-based filter/bulk-delete dialogs
   - `analyze_cache.go`: process-local caching for analyze discovery/session reuse within one TUI run
-  - `discovery.go`: candidate discovery dispatcher plus shared filesystem helpers
-  - `discovery_openclaw.go`, `discovery_ironclaw.go`, `discovery_ollama.go`: assistant-specific discovery rules for the original supported tools
-  - `discovery_session_tools.go`: discovery rules for Codex Desktop, Codex CLI, Claude Code, Cursor, and Antigravity session/local-state paths
+  - `discovery.go`: candidate discovery dispatcher plus root-level filesystem helpers and compatibility wrappers
+  - `discoveryrules/`: assistant-specific leftover discovery rules and path heuristics
+    - `openclaw.go`, `ironclaw.go`, `ollama.go`: discovery rules for the original supported tools
+    - `session_tools.go`: discovery rules for Codex Desktop, Codex CLI, Claude Code, Cursor, and Antigravity session/local-state paths
+    - `base.go`: local candidate/safety model and helper functions used by discovery providers
   - `sessions.go`: top-level session wrappers used by analyze and deletion flows
   - `sessions_openclaw.go`, `openclaw_sessions.go`, `session_delete_tx.go`: OpenClaw session parsing plus metadata-safe deletion helpers that still live in the root cleaner package
   - `sessionstore/`: non-OpenClaw conversation providers and their storage helpers
@@ -56,7 +59,7 @@ Last updated: 2026-03-10
 
 - Process entry: `main.go`
 - Command dispatch: `internal/cleaner/run.go`
-- Discovery rules: `internal/cleaner/discovery.go`, `internal/cleaner/discovery_*.go`
+- Discovery rules: `internal/cleaner/discovery.go`, `internal/cleaner/discoveryrules/*.go`
 - Report structures: `internal/cleaner/types.go`
 - User-facing output: `internal/cleaner/output.go`, `internal/cleaner/ui.go`
 - Build and test entry points: `Makefile`
@@ -70,16 +73,17 @@ Last updated: 2026-03-10
 3. `analyze.go` dispatches into the Bubble Tea analyze TUI
 4. `analyze_tui.go` renders the full-screen browser for assistants, leftovers, and conversation sessions
 5. `scanReport` / `cleanReport` assemble runtime options and call `discoverCandidates`
-6. `discovery_*.go` gathers candidate paths per assistant and labels them as `safe`, `confirm`, or `manual`
+6. `discovery.go` dispatches into `discoveryrules/*.go`, which gather candidate paths per assistant and label them as `safe`, `confirm`, or `manual`
 7. `sessions.go` plus `sessionstore/*.go` read assistant-specific conversation stores and expose title/content previews plus deletion support only when index cleanup is implemented
-8. `cleanReport` decides deletion eligibility and confirmation flow based on explicit selectors (`--id`, `--kind`, `--safety`), plus `--yes` and `--dry-run`
-9. The final report is emitted through `output.go` or JSON serialization
+8. `runAnalyzeTUI` chooses the tview UI on real terminals and falls back to the legacy Bubble Tea path for non-TTY execution
+9. `cleanReport` decides deletion eligibility and confirmation flow based on explicit selectors (`--id`, `--kind`, `--safety`), plus `--yes` and `--dry-run`
+10. The final report is emitted through `output.go` or JSON serialization
 
 ## Current Module Boundaries
 
 - `main.go` should not contain business logic
 - `run.go` owns CLI interaction and flow orchestration, not assistant-specific path knowledge
-- `discovery.go` and `discovery_*.go` are the source of truth for deletion boundaries and platform path knowledge
+- `discovery.go` owns the root aggregation surface, while `discoveryrules/` owns assistant-specific deletion boundaries and platform path knowledge
 - `analyze.go` owns analyze command setup and guardrails
 - `analyze_tui.go` owns interactive navigation and item-level deletion UX
 - `sessions.go` owns the cleaner-package wrapper surface used by analyze, while `sessionstore/` owns non-OpenClaw provider implementations and must preserve provider-specific index consistency before enabling deletion
@@ -89,7 +93,7 @@ Last updated: 2026-03-10
 ## Common Cross-File Changes
 
 - Add support for a new assistant:
-  - Update the relevant `internal/cleaner/discovery_*.go` file, or add a new one if the assistant has enough unique logic
+  - Update the relevant `internal/cleaner/discoveryrules/*.go` file, or add a new one if the assistant has enough unique logic
   - Update `internal/cleaner/types.go` or `internal/cleaner/output.go` if needed
   - Update `README.md` and the safety classification documentation
 - Change CLI flags or command behavior:
@@ -107,7 +111,7 @@ Last updated: 2026-03-10
 
 ## Fragile Areas / Cautions
 
-- The rules in `discovery_*.go` are deletion boundaries; bad classification can become real data loss
+- The rules in `discoveryrules/*.go` are deletion boundaries; bad classification can become real data loss
 - `manual` is the last safety boundary and should not be downgraded just because a path looks cache-like
 - The non-interactive behavior in `cleanReport` depends on explicit selectors plus `--yes` / `--dry-run`; this is a core agent-mode guardrail
 - Session deletion can span transcript files, JSON indexes, and SQLite state; any provider that cannot update all linked state coherently must stay preview-only

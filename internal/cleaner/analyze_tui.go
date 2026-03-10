@@ -90,7 +90,7 @@ type analyzeModel struct {
 	previewSessionID   string
 }
 
-func runAnalyzeTUI(assistants []string, before time.Time, stdout, stderr io.Writer) error {
+func runAnalyzeTUILegacy(assistants []string, before time.Time, stdout, stderr io.Writer) error {
 	model, err := newAnalyzeModel(assistants, before)
 	if err != nil {
 		return err

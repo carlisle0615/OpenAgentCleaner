@@ -89,6 +89,14 @@
   - moved non-OpenClaw session providers and their storage helpers into `internal/cleaner/sessionstore/`
   - kept OpenClaw-specific parsing/deletion in `internal/cleaner/` because it still shares helper and test surface with the root package
   - updated `make fmt` and `scripts/verify-all.sh` to recurse through all Go files so new subdirectories stay inside the default validation contract
+- Follow-up discovery structure cleanup:
+  - moved assistant-specific leftover discovery rules into `internal/cleaner/discoveryrules/`
+  - kept `internal/cleaner/discovery.go` as the root aggregation surface so callers and tests can continue using `discoverCandidates` without package churn
+  - preserved compatibility wrappers for OpenClaw-specific helpers still used by session parsing and older tests
+- Follow-up analyze UI framework switch:
+  - switched interactive `analyze` UI to `tview` (`internal/cleaner/analyze_tui_tview.go`) to replace hand-drawn overlay dialogs with modal components
+  - kept legacy Bubble Tea path as non-TTY fallback (`runAnalyzeTUILegacy`) for deterministic tests and non-terminal runs
+  - dialog-heavy flows (`f` date filter, `x` bulk delete, `d` confirm delete) now run through tview modal/forms
 - Updated assistant parsing, output labels, README, discovery rules, repo map, and tests
 
 ## Validation

@@ -1,11 +1,11 @@
-package cleaner
+package discoveryrules
 
 import (
 	"os"
 	"path/filepath"
 )
 
-func discoverIronClaw(home string) []Candidate {
+func DiscoverIronClaw(home string) []Candidate {
 	baseDir := cleanPath(os.Getenv("IRONCLAW_BASE_DIR"))
 	if baseDir == "." || baseDir == "" {
 		baseDir = filepath.Join(home, ".ironclaw")
