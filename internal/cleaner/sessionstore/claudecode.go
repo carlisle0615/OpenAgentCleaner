@@ -1,4 +1,4 @@
-package cleaner
+package sessionstore
 
 import (
 	"bufio"
@@ -34,19 +34,7 @@ type claudeCodeEvent struct {
 	} `json:"message"`
 }
 
-func newClaudeCodeConversationProvider() conversationProvider {
-	return conversationProvider{
-		discover: discoverClaudeCodeConversationSessions,
-		preview:  previewClaudeCodeConversationSession,
-		delete:   deleteClaudeCodeConversationSessions,
-		ignoredCandidateKinds: map[string]struct{}{
-			"transcripts":      {},
-			"project_sessions": {},
-		},
-	}
-}
-
-func discoverClaudeCodeConversationSessions() ([]ConversationSession, error) {
+func DiscoverClaudeCodeConversationSessions() ([]ConversationSession, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
@@ -155,7 +143,7 @@ func scanClaudeCodeSession(path string) (claudeCodeSession, error) {
 	return session, nil
 }
 
-func previewClaudeCodeConversationSession(session ConversationSession) (string, error) {
+func PreviewClaudeCodeConversationSession(session ConversationSession) (string, error) {
 	stored, ok := session.ProviderData.(claudeCodeSession)
 	if !ok {
 		return "", errUnexpectedSessionProviderData("claudecode", session.ProviderData)
@@ -200,7 +188,7 @@ func previewClaudeCodeConversationSession(session ConversationSession) (string, 
 	return strings.Join(messages, "\n\n"), nil
 }
 
-func deleteClaudeCodeConversationSessions(sessions []ConversationSession) error {
+func DeleteClaudeCodeConversationSessions(sessions []ConversationSession) error {
 	for _, session := range sessions {
 		stored, ok := session.ProviderData.(claudeCodeSession)
 		if !ok {

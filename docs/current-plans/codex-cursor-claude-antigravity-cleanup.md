@@ -14,16 +14,19 @@
 - `docs/current-plan.md`
 - `docs/current-plans/codex-cursor-claude-antigravity-cleanup.md`
 - `internal/cleaner/analyze.go`
+- `internal/cleaner/analyze_cache.go`
 - `internal/cleaner/analyze_tui.go`
 - `internal/cleaner/discovery.go`
 - `internal/cleaner/discovery_session_tools.go`
 - `internal/cleaner/openclaw_sessions.go`
 - `internal/cleaner/session_delete_tx.go`
-- `internal/cleaner/sessions*.go`
+- `internal/cleaner/sessions.go`
+- `internal/cleaner/sessionstore/*.go`
 - `internal/cleaner/types.go`
 - `internal/cleaner/run.go`
 - `internal/cleaner/output.go`
 - `internal/cleaner/*_test.go`
+- `tests/regression/manual/test_analyze_latency.sh`
 - `README.md`
 - `docs/DISCOVERY_RULES.md`
 - `docs/repo-map.md`
@@ -94,6 +97,45 @@
     - `Enter` still opens the larger dedicated preview screen
     - mixed Chinese/English labels and preview text now use display-width-aware truncation/wrapping instead of raw byte/rune counts
     - the right detail pane now has an explicit width so preview content renders in-pane instead of collapsing the layout
+  - Follow-up manual diagnostics on 2026-03-10:
+    - there was no existing regression script for `analyze` panel open latency
+    - added `tests/regression/manual/test_analyze_latency.sh` plus a gated manual timing test in `internal/cleaner/analyze_manual_test.go`
+    - local timing baseline on this machine:
+      - `codex` init ~`5.734s`, open conversations ~`4.232s`, open preview ~`36ms`
+      - `codex-cli` init ~`8.238s`, open preview ~`17ms`
+      - `cursor` init ~`4.12s`, open preview ~`2ms`
+      - `claudecode` init ~`91ms`, open conversations ~`82ms`
+      - `antigravity` init ~`70ms`, open conversations ~`23ms`
+  - Follow-up session-list performance fix on 2026-03-10:
+    - large session lists no longer render every row on each cursor move
+    - session and candidate panes now render a visible window plus elision markers
+    - list column padding now uses display width instead of `fmt %-Ns`, reducing ANSI/full-width misalignment
+  - Follow-up analyze caching on 2026-03-10:
+    - added process-local analyze discovery caches in `internal/cleaner/analyze_cache.go`
+    - `assistantAnalyzeSummary`, `reloadSessions`, `reloadCandidates`, and bulk-delete source selection now reuse the same cached discovery results inside one `oac analyze` run
+    - session and leftover caches are explicitly invalidated after delete actions so UI state stays coherent
+    - added `internal/cleaner/analyze_cache_test.go` to verify cache reuse and invalidation behavior
+    - updated manual latency on this machine after the cache wiring:
+      - `antigravity` init ~`186ms`, open conversations ~`0s`, open preview ~`0s`
+      - `claudecode` init ~`255ms`, open conversations ~`0s`, open preview ~`6ms`
+      - `codex` init ~`5.952s`, open conversations ~`0s`, open preview ~`48ms`
+      - `codex-cli` init ~`4.289s`, open preview ~`17ms`
+      - `cursor` init ~`2.102s`, open preview ~`2ms`
+    - remaining bottleneck is first-time provider discovery for single-assistant analyze runs, especially `codex`, `codex-cli`, and `cursor`
+  - Follow-up Codex provider optimization on 2026-03-10:
+    - `internal/cleaner/sessions_codex.go` now classifies known Codex thread sources directly from SQLite (`vscode` => desktop, `cli`/`exec`/`mcp` => CLI)
+    - rollout JSONL metadata scans now only happen for `source='unknown'` rows instead of every thread
+    - Codex SQL discovery is filtered by target assistant before row iteration
+    - added tests for source-based classification plus fallback-to-rollout behavior for unknown sources
+    - updated local timing after this change:
+      - `codex` init ~`39ms`, open conversations ~`0s`, open preview ~`45ms`
+      - `codex-cli` init ~`44ms`, open preview ~`16ms`
+    - remaining first-load hotspot is now mainly `cursor`
+  - Follow-up structure cleanup on 2026-03-10:
+    - extracted non-OpenClaw session providers out of the flat `internal/cleaner` root into `internal/cleaner/sessionstore/`
+    - root `internal/cleaner/sessions.go` now acts as a thin wrapper surface for analyze and deletion flows
+    - OpenClaw session parsing/deletion stays in the root package because it still shares helper/test surface with the main cleaner package
+    - format/verification scripts now recurse through all Go files so the new subdirectory is covered by default CI-safe validation
 
 ## Validation Notes
 

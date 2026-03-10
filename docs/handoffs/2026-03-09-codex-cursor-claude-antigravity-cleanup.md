@@ -56,6 +56,39 @@
   - selected sessions now render inline preview text in the detail pane while keeping `Enter` for the larger preview screen
   - mixed Chinese/English content now uses display-width-aware truncation and wrapping to avoid pane misalignment
   - detail panes now reserve explicit width so preview text stays in the right pane
+- Follow-up manual diagnostics:
+  - added `tests/regression/manual/test_analyze_latency.sh` and a gated `internal/cleaner/analyze_manual_test.go`
+  - current local baseline shows session discovery is the dominant latency:
+    - `codex` init ~`5.7s`, open conversations ~`4.2s`
+    - `codex-cli` init ~`8.2s`
+    - `cursor` init ~`4.1s`
+    - preview open itself is comparatively cheap once the session list is loaded
+- Follow-up session-list rendering fix:
+  - large session and candidate lists now render only the visible window instead of every row
+  - list padding now uses display width instead of `fmt` width specifiers, reducing mixed-width terminal misalignment
+- Follow-up analyze discovery cache:
+  - added `internal/cleaner/analyze_cache.go` so a single `oac analyze` run reuses discovered sessions and leftovers between summary, menu, and list screens
+  - session and leftover caches are invalidated after delete actions to preserve consistency
+  - added `internal/cleaner/analyze_cache_test.go` to cover cache reuse and invalidation
+  - reran `tests/regression/manual/test_analyze_latency.sh` on 2026-03-10 and confirmed that entering conversation lists no longer replays multi-second rescans:
+    - `codex` init ~`5.952s`, open conversations ~`0s`, open preview ~`48ms`
+    - `claudecode` init ~`255ms`, open conversations ~`0s`, open preview ~`6ms`
+    - `antigravity` init ~`186ms`, open conversations ~`0s`, open preview ~`0s`
+    - `cursor` init ~`2.102s`, open preview ~`2ms`
+    - `codex-cli` init ~`4.289s`, open preview ~`17ms`
+  - the remaining latency hotspot is initial provider discovery for single-assistant runs, not session-list entry after startup
+- Follow-up Codex discovery optimization:
+  - Codex session discovery now trusts SQLite `threads.source` for known values and only scans rollout JSONL files for `source='unknown'`
+  - `codex` discovery is filtered to `vscode` plus fallback-unknown rows; `codex-cli` discovery is filtered to non-`vscode` rows
+  - added regression coverage for both direct source classification and unknown-source rollout fallback
+  - reran manual latency on 2026-03-10:
+    - `codex` init ~`39ms`, open conversations ~`0s`, open preview ~`45ms`
+    - `codex-cli` init ~`44ms`, open preview ~`16ms`
+  - after this change, the dominant remaining single-assistant startup cost is `cursor`, not Codex
+- Follow-up structure cleanup:
+  - moved non-OpenClaw session providers and their storage helpers into `internal/cleaner/sessionstore/`
+  - kept OpenClaw-specific parsing/deletion in `internal/cleaner/` because it still shares helper and test surface with the root package
+  - updated `make fmt` and `scripts/verify-all.sh` to recurse through all Go files so new subdirectories stay inside the default validation contract
 - Updated assistant parsing, output labels, README, discovery rules, repo map, and tests
 
 ## Validation

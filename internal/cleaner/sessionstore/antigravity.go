@@ -1,4 +1,4 @@
-package cleaner
+package sessionstore
 
 import (
 	"encoding/json"
@@ -22,14 +22,7 @@ type antigravityTaskSession struct {
 	Summary          string
 }
 
-func newAntigravityConversationProvider() conversationProvider {
-	return conversationProvider{
-		discover: discoverAntigravityConversationSessions,
-		preview:  previewAntigravityConversationSession,
-	}
-}
-
-func discoverAntigravityConversationSessions() ([]ConversationSession, error) {
+func DiscoverAntigravityConversationSessions() ([]ConversationSession, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
@@ -109,7 +102,7 @@ func discoverAntigravityConversationSessions() ([]ConversationSession, error) {
 	return out, nil
 }
 
-func previewAntigravityConversationSession(session ConversationSession) (string, error) {
+func PreviewAntigravityConversationSession(session ConversationSession) (string, error) {
 	stored, ok := session.ProviderData.(antigravityTaskSession)
 	if !ok {
 		return "", errUnexpectedSessionProviderData("antigravity", session.ProviderData)

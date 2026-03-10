@@ -1,6 +1,7 @@
 package cleaner
 
 import (
+	"fmt"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -24,6 +25,8 @@ func testConversationSession(id, title, path string, startedAt time.Time) Conver
 }
 
 func TestNewAnalyzeModelAndNavigation(t *testing.T) {
+	resetAnalyzeDiscoveryCache()
+	t.Cleanup(resetAnalyzeDiscoveryCache)
 	home := setTestHome(t)
 	openclawRoot := filepath.Join(home, ".openclaw")
 	writeTestFile(t, filepath.Join(openclawRoot, "logs", "app.log"), "log")
@@ -203,6 +206,8 @@ func TestAnalyzeModelKeyHandlingAndDialogs(t *testing.T) {
 }
 
 func TestAnalyzeDeleteFlowsAndReloads(t *testing.T) {
+	resetAnalyzeDiscoveryCache()
+	t.Cleanup(resetAnalyzeDiscoveryCache)
 	home := setTestHome(t)
 	openclawRoot := filepath.Join(home, ".openclaw")
 	sessionsDir := filepath.Join(openclawRoot, "agents", "main", "sessions")
@@ -353,6 +358,13 @@ func TestAnalyzeRenderingHelpers(t *testing.T) {
 	if !strings.Contains(strings.Join(wrapDisplayText("中文 mixed English content", 8), "\n"), "\n") {
 		t.Fatal("wrapDisplayText() should wrap mixed-width content")
 	}
+	start, end := visibleWindow(100, 50, 12)
+	if start >= 50 || end <= 50 || end-start != 12 {
+		t.Fatalf("visibleWindow() = %d, %d", start, end)
+	}
+	if displayFillRight("中文A", 8) == "中文A" || displayFillLeft("12 MB", 8) == "12 MB" {
+		t.Fatal("displayFill helpers should pad by display width")
+	}
 
 	model.screen = screenCandidates
 	model.inputMode = inputSessionFilter
@@ -430,6 +442,33 @@ func TestAnalyzeRenderingHelpers(t *testing.T) {
 	}
 	if clampIndex(-1, 2) != 0 || clampIndex(9, 2) != 1 || clampIndex(0, 0) != 0 {
 		t.Fatal("clampIndex() mismatch")
+	}
+}
+
+func TestRenderSessionsListUsesVisibleWindow(t *testing.T) {
+	model := analyzeModel{
+		height:   18,
+		styles:   newAnalyzeStyles(),
+		screen:   screenSessions,
+		sessions: make([]ConversationSession, 0, 40),
+	}
+	for i := 0; i < 40; i++ {
+		model.sessions = append(model.sessions, ConversationSession{
+			Assistant: "codex",
+			ID:        fmt.Sprintf("s-%d", i),
+			Title:     fmt.Sprintf("会话 %d mixed title", i),
+			UpdatedAt: time.Date(2026, 3, 10, 0, 0, i, 0, time.UTC),
+			SizeBytes: int64(1024 + i),
+		})
+	}
+	model.sessionIndex = 20
+
+	rendered := model.renderSessionsList()
+	if !strings.Contains(rendered, "...") {
+		t.Fatalf("renderSessionsList() should show elided rows:\n%s", rendered)
+	}
+	if strings.Count(rendered, "\n") >= 25 {
+		t.Fatalf("renderSessionsList() should only render a visible window:\n%s", rendered)
 	}
 }
 

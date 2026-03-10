@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"sync"
+
+	"github.com/carlisle0615/OpenAgentCleaner/internal/cleaner/sessionstore"
 )
 
 var verboseState struct {
@@ -17,6 +19,7 @@ func setVerboseLogger(enabled bool, writer io.Writer) {
 	defer verboseState.mu.Unlock()
 	verboseState.enabled = enabled
 	verboseState.writer = writer
+	sessionstore.SetVerboseLogger(enabled, verbosef)
 }
 
 func resetVerboseLogger() {

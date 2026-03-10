@@ -1,6 +1,6 @@
 # Repo Map
 
-Last updated: 2026-03-09
+Last updated: 2026-03-10
 
 ## Purpose
 
@@ -22,13 +22,17 @@ Last updated: 2026-03-09
   - `run.go`: command dispatch, flag parsing, interactive home menu, version/help output, main `scan` / `clean` flow
   - `analyze.go`: analyze command flag parsing and TUI bootstrap
   - `analyze_tui.go`: Bubble Tea TUI for assistant browsing, cross-assistant conversation review, and item-level deletion
+  - `analyze_cache.go`: process-local caching for analyze discovery/session reuse within one TUI run
   - `discovery.go`: candidate discovery dispatcher plus shared filesystem helpers
   - `discovery_openclaw.go`, `discovery_ironclaw.go`, `discovery_ollama.go`: assistant-specific discovery rules for the original supported tools
   - `discovery_session_tools.go`: discovery rules for Codex Desktop, Codex CLI, Claude Code, Cursor, and Antigravity session/local-state paths
-  - `sessions.go`: generic conversation session model plus provider dispatch
-  - `sessions_openclaw.go`, `openclaw_sessions.go`: OpenClaw session parsing plus metadata-safe deletion
-  - `sessions_codex.go`, `sessions_claudecode.go`, `sessions_cursor.go`, `sessions_antigravity.go`: assistant-specific conversation browsing and safe deletion providers
-  - `sessions_sqlite.go`, `session_delete_tx.go`: SQLite access and cross-provider backup/rollback helpers for session deletion
+  - `sessions.go`: top-level session wrappers used by analyze and deletion flows
+  - `sessions_openclaw.go`, `openclaw_sessions.go`, `session_delete_tx.go`: OpenClaw session parsing plus metadata-safe deletion helpers that still live in the root cleaner package
+  - `sessionstore/`: non-OpenClaw conversation providers and their storage helpers
+    - `types.go`: shared `ConversationSession` type and display helpers for provider output
+    - `codex.go`, `claudecode.go`, `cursor.go`, `antigravity.go`: assistant-specific conversation browsing and safe deletion providers
+    - `sqlite.go`, `delete_tx.go`: SQLite access and rollback helpers reused by session providers
+    - `registry.go`, `helpers.go`: provider metadata plus local utility helpers
   - `types.go`: core data structures such as `Candidate`, `Report`, `Summary`, plus mode normalization helpers
   - `output.go`: guided human-readable report output
   - `ui.go`: terminal presentation helpers for badges, sections, and color support
@@ -67,7 +71,7 @@ Last updated: 2026-03-09
 4. `analyze_tui.go` renders the full-screen browser for assistants, leftovers, and conversation sessions
 5. `scanReport` / `cleanReport` assemble runtime options and call `discoverCandidates`
 6. `discovery_*.go` gathers candidate paths per assistant and labels them as `safe`, `confirm`, or `manual`
-7. `sessions*.go` read assistant-specific conversation stores and expose title/content previews plus deletion support only when index cleanup is implemented
+7. `sessions.go` plus `sessionstore/*.go` read assistant-specific conversation stores and expose title/content previews plus deletion support only when index cleanup is implemented
 8. `cleanReport` decides deletion eligibility and confirmation flow based on explicit selectors (`--id`, `--kind`, `--safety`), plus `--yes` and `--dry-run`
 9. The final report is emitted through `output.go` or JSON serialization
 
@@ -78,7 +82,7 @@ Last updated: 2026-03-09
 - `discovery.go` and `discovery_*.go` are the source of truth for deletion boundaries and platform path knowledge
 - `analyze.go` owns analyze command setup and guardrails
 - `analyze_tui.go` owns interactive navigation and item-level deletion UX
-- `sessions*.go` own conversation parsing and must preserve provider-specific index consistency before enabling deletion
+- `sessions.go` owns the cleaner-package wrapper surface used by analyze, while `sessionstore/` owns non-OpenClaw provider implementations and must preserve provider-specific index consistency before enabling deletion
 - `types.go` owns shared structures, mode handling, and small utilities
 - `output.go` and `ui.go` are presentation only and must not change deletion decisions
 
@@ -92,7 +96,7 @@ Last updated: 2026-03-09
   - Start in `internal/cleaner/run.go` or `internal/cleaner/analyze.go`
   - Then check `README.md`, `docs/RELEASING.md`, CI, and related tests
 - Change conversation browsing or deletion behavior:
-  - Update the relevant `internal/cleaner/sessions*.go` provider and any underlying session parser such as `internal/cleaner/openclaw_sessions.go`
+  - Update the relevant `internal/cleaner/sessionstore/*.go` provider or `internal/cleaner/openclaw_sessions.go` for OpenClaw
   - Review `internal/cleaner/analyze_tui.go` and `README.md`
 - Change output formatting or JSON structure:
   - Update `internal/cleaner/output.go`, `internal/cleaner/ui.go`, or `internal/cleaner/types.go`
@@ -109,7 +113,7 @@ Last updated: 2026-03-09
 - Session deletion can span transcript files, JSON indexes, and SQLite state; any provider that cannot update all linked state coherently must stay preview-only
 - CI runs on `macos-latest`, while the release workflow runs GoReleaser plus `go test ./...` on `ubuntu-latest`; tests must stay cross-platform unless they are explicitly guarded
 - The release installer and Homebrew formula generator assume archive names shaped like `oac_<version>_darwin_<arch>.tar.gz`
-- `gofmt -w ... && git diff --exit-code` modifies files before validating cleanliness, so any format target changes must stay in sync across CI and `Makefile`
+- `make fmt` and `scripts/verify-all.sh` now format/check all Go files recursively; any new Go subdirectory must stay inside that recursive scope
 
 ## Suggested Reading Order
 

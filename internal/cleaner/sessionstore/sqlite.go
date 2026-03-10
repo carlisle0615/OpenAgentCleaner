@@ -1,4 +1,4 @@
-package cleaner
+package sessionstore
 
 import (
 	"database/sql"
@@ -7,7 +7,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func openSQLiteDB(path string) (*sql.DB, error) {
+func OpenSQLiteDB(path string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, err
